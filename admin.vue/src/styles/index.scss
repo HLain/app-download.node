@@ -1,0 +1,194 @@
+
+* {
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+.el-dialog {
+  width: 640px;
+
+  &__body {
+    max-height: 52vh;
+    overflow-y: auto;
+  }
+  .el-transfer-panel {
+    width: 245px;
+  }
+}
+
+.el-form-item {
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.el-input {
+  .svg-icon {
+    width: 25px !important;
+  }
+}
+
+.el-button {
+  &.btn-text {
+    padding: 0;
+  }
+}
+
+.el-upload {
+  &--card & {
+    box-sizing: border-box;
+    display: block;
+    position: relative;
+    margin: 0 auto;
+    border: 1px dashed #c0ccda;
+    border-radius: 6px;
+    width: 148px;
+    height: 148px;
+    line-height: 40px;
+    text-align: center;
+    background-color: #fbfdff;
+    cursor: pointer;
+  
+    .img-view {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: contain;
+    }
+    .el-icon-plus {
+      margin: 40px 0 16px;
+      font-size: 40px;
+      color: #c0c4cc;
+    }  
+  }
+  .el-form-item & {
+    display: block;
+    width: 360px;
+  }
+  &-list__item {
+    &:hover .btn-text {
+      display: inline-block;
+    }
+  }
+}
+
+.app-container {
+  max-width: 1280px;
+  // padding: 30px;
+}
+
+.wrap-holdH100P {
+  height: 100%;
+}
+
+.logo-menu {
+  display: block;
+  width: 128px;
+  height: 128px;
+  margin: 0 auto;
+}
+
+.lst {
+
+  &-item {
+    & + & {
+      margin-top: 20px;
+    }
+
+    .el-icon-loading {
+      display: inline-block;
+    }
+  }
+
+  &-order {
+    padding-left: 24px;
+  }
+}
+
+.btn {
+  cursor: pointer;
+
+  &-hold {
+    width: 100%;
+  }
+}
+
+.float {
+  &-l {
+    float: left;
+  }
+  &-r {
+    float: right;
+  }
+}
+.clearfix {
+  &:after {
+    content: "";
+    display: block;
+    height: 0;
+    font-size: 0;
+    clear: both;
+    visibility: hidden;
+  }
+}
+
+.text {
+  &-breakword {
+    word-wrap: break-word;
+  }
+}
+
+.marg {
+  &-t-text {
+    margin-top: 15px;
+  }
+}
+
+.align {
+  &-l {
+    text-align: left;
+  }
+  &-c {
+    text-align: center;
+  }
+  &-r {
+    text-align: right;
+  }
+}
+
+.fc {
+  &-warn {
+    color: #F56C6C;
+  }
+  &-tipe {
+    color: #999999;
+  }
+  &-menu {
+    color: #303133;
+  }
+}
+
+.fs {
+  &-large {
+    font-size: 18px;
+  }
+  &-page {
+    font-size: 16px;
+  }
+  &-elui {
+    font-size: 14px;
+  }
+  &-small {
+    font-size: 12px;
+  }
+}

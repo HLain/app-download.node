@@ -1,0 +1,23 @@
+{
+  "name": "app-download-server",
+  "version": "1.0.0",
+  "description": "APP Download Server in NodeJS",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "HLain <abcxyz0_0@163.com>",
+  "license": "ISC",
+  "dependencies": {
+    "art-template": "^4.13.2",
+    "body-parser": "^1.18.3",
+    "cookie-parser": "^1.4.4",
+    "express": "^4.16.4",
+    "express-urlrewrite": "^1.2.0",
+    "gm": "^1.23.1",
+    "log4js": "^4.1.0",
+    "mime": "^2.4.2",
+    "multer": "^1.4.1",
+    "uuid": "^3.3.2"
+  }
+}

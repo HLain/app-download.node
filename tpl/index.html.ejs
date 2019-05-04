@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<!--[if IE 7]> <html lang="en" class="ie7"> <![endif]-->
+<!--[if IE 8]> <html lang="en" class="ie8"> <![endif]-->
+<!--[if IE 9]> <html lang="en" class="ie9"> <![endif]-->
+<!--[if !IE]><!-->
+<html lang="en">
+<!--<![endif]-->
+
+<head>
+  <meta charset="utf-8" />
+  <title>{{ projectName }}</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+
+  <meta name="keywords" content="蒲公英内测平台 pgyer  企业签名 iOS Android 安卓苹果应用测试托管 免费上传内测分发安装 开放SDK CDN">
+  <meta name="description" content="蒲公英 为开发者提供简洁迅速的内测程序分发服务">
+  <meta property="og:type" content="webpage">
+  <meta property="og:url" content="https://www.pgyer.com">
+  <meta property="og:title" content="蒲公英">
+  <meta property="og:description" content="蒲公英 为开发者提供简洁迅速的内测程序分发服务">
+  <meta name="apple-mobile-web-app-title" content="蒲公英">
+
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no minimal-ui">
+
+  <link rel="dns-prefetch" href="//www.pgyer.com">
+  <link rel="dns-prefetch" href="//appicon.pgyer.com">
+  <link rel="dns-prefetch" href="//app-screenshot.pgyer.com">
+  <link rel="dns-prefetch" href="//static.pgyer.com">
+
+  <link rel="shortcut icon" href="https://static.pgyer.com/static-20180809/assets/img/favicon.ico" />
+
+  <link rel="stylesheet" href="https://static.pgyer.com/static-20180809/assets/build/header_include.min.css">
+  <link rel="stylesheet" href="https://static.pgyer.com/static-20180809/assets/css/appView.css">
+  <link rel="stylesheet" href="https://static.pgyer.com/static-20180809/assets/css/viewColorful.css">
+  <style>
+    table.app_view_history td {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      word-break: break-all;
+      word-wrap: break-word;
+      text-align: center;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- wechat share icon -->
+  <div style="display:none;">
+    <img src="icon180.png" onerror="javascript:this.src='https://static.pgyer.com/static-20180809/assets/img/default-icon.png';" />
+  </div>
+
+  <div class="row-fluid margin-bottom-20" style="z-index:-2;">
+    <div id="header"></div>
+  </div>
+
+  <!--=== Content Part ===-->
+  <div class="container content">
+    <div class="view row">
+      <div class="span12 margin-bottom-30 " id="appicon-bg">
+        <a href="javascript:void(0);" onclick="javascript:install();"><img src="icon120.png" class="appicon" onerror="javascript:this.src='https://static.pgyer.com/static-20180809/assets/img/default-icon.png';" /></a>
+      </div>
+      <div class="span12" style="text-align:center;padding-top:10px;">
+        <h2 style="color:#333;size:24px;margin-bottom: -5px;">
+          <i class="fa fa-apple" aria-hidden="true"></i>
+          {{ projectName }}
+          <span class="label label-danger signature-label signature_in_house">企业版</span>
+        </h2>
+      </div>
+      <div class="span12 gray-text" style="text-align:center;">
+
+      </div>
+    </div>
+
+    <div class="view row margin-bottom-30 col-md-6 col-md-offset-3" style="padding-top:26px;">
+      <div class="col-md-12">
+        <div class="span12 gray-text" style="text-align:center;">
+
+        </div>
+      </div>
+      <div class="col-md-12" style="margin-top:20px;">
+        <div class="row mb-10 install-btn">
+          <div class="span12 margin-bottom-20" style="text-align:center;">
+            <div class="spinner">
+              <div id="showtext">正在安装，请按 Home 键在桌面查看</div>
+              <div class="loading"></div>
+              <a class="btn-u btn-u-lg" href="itms-services://?action=download-manifest&url={{ downloadPath }}describe.plist">
+                <img src="https://static.pgyer.com/static-20180809/images/dl.png" class="hide">
+                点击安装
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <div class="span12 gray-text" style="text-align:center; ">
+        </div>
+      </div>
+    </div>
+
+    <!-- Start install -->
+    <div class="view row" style="margin-top:30px;">
+      <div class="span12 margin-bottom-20" style="text-align:center;display:none;">
+        <div class="spinner">
+          <div id="showtext">正在安装，请按 Home 键在桌面查看</div>
+          <div class="loading"></div>
+          <a href="javascript:void(0);" onclick="javascript:install_loading();" id="down_load"
+            class="btn-u btn-u-lg btn-u-green"><i class="fa fa-download"></i> 点击安装</a>
+        </div>
+      </div>
+    </div>
+    <!-- Dnd install -->
+
+    <!-- ====== Start appStore ==== -->
+
+    <!-- ====== End appStore ==== -->
+
+  </div>
+  <!--/container-->
+  <!--=== End Content Part ===-->
+
+  <div style="padding-left:15px;padding-right:15px;">
+
+  </div>
+  <!--=== Copyright ===-->
+  <link rel="stylesheet" href="https://static.pgyer.com/static-20180809/assets/plugins/sky-forms/version-2.0.1/css/custom-sky-forms.css">
+  <link href="https://static.pgyer.com/static-20180809/fineuploader/fineuploader.css" rel="stylesheet" type="text/css" />
+
+  <div id="reportAppModal"></div>
+  <div id="loginTelModalDiv"></div>
+  <div class="modal fade addmodel in" id="inhouseTip" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="false" style="display: none;">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+          <h4 class="modal-title font-16">"未受信任的企业级开发者"的解决办法</h4>
+        </div>
+        <div class="modal-body" style="background:#f2f2f2;height:600px;overflow-y: scroll;">
+          <section>
+            <div style="padding:0 20px 20px;color:#333;">
+              <p>因苹果公司的政策原因，在iOS系统中首次安装企业版应用时会出现"未受信任的企业级开发者"提示</p>
+            </div>
+            <div style="padding:0 10px 20px;">
+              <img class="img-responsive center-block mt-20 mb-20" src="https://static.pgyer.com/static-20180809/images/resovelFlow1_cn.png" style="width:80%;">
+              <br />
+              <h4 class="font-16">解决办法如下（以iOS11系统为例）：</h4>
+              <li style="list-style:none;color:#333;">1、在手机中打开设置功能，选择"通用"</li>
+              <img class="img-responsive center-block mt-20 mb-20" src="https://static.pgyer.com/static-20180809/images/resovelFlow2_cn.png" style="width:80%;">
+              <li style="list-style:none;color:#333;">2、在通用中，选择"描述文件与设备管理"功能</li>
+              <img class="img-responsive center-block mt-20 mb-20" src="https://static.pgyer.com/static-20180809/images/resovelFlow3_cn.png" style="width:80%;">
+              <li style="list-style:none;color:#333;"> 3、在描述文件与设备管理中的企业级应用分类中，选择要安装的企业应用的文件名称（与打开时的提示一致），点击进入</li>
+              <img class="img-responsive center-block mt-20 mb-20" src="https://static.pgyer.com/static-20180809/images/resovelFlow4_cn.png" style="width:80%;">
+              <li style="list-style:none;color:#333;">4、进入企业签名页面后，确认企业签名中的公司名称与应用名称后，点击信任"企业签名公司名称"</li>
+              <img class="img-responsive center-block mt-20 mb-20" src="https://static.pgyer.com/static-20180809/images/resovelFlow5_cn.png" style="width:80%;">
+              <img class="img-responsive center-block mt-20 mb-20" src="https://static.pgyer.com/static-20180809/images/resovelFlow6_cn.png" style="width:80%;">
+              <li style="list-style:none;color:#333;">5、回到桌面，重新打开应用即可使用</li>
+              <br />
+            </div>
+          </section>
+        </div>
+        <div class="modal-footer" style="margin-top:0px">
+          <a data-dismiss="modal" href="javascript:void(0)" class="btn btn-u btn-u btn-u-default" id="cancle">关闭</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!--=== End Copyright ===-->
+  <!-- JS Global Compulsory -->
+</body>
+
+</html>
