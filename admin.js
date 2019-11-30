@@ -75,8 +75,8 @@ function buildProjectFile(fileName, projectPath, data) {
   }).then(text => {
     // 将生成文件保存到项目目录下
     return new Promise(function(resolve, reject) {
-      const filePath = path.resolve(APPS_FOLDER, projectPath, fileName);
-      fs.writeFile(resolvePath(filePath), text, err => {
+      const filePath = resolvePath(APPS_FOLDER, projectPath, fileName);
+      fs.writeFile(filePath, text, err => {
         if (err) {
           logger.error(`Write file ${filePath} failed: ${err}`);
           reject(CodeError.SetDataError);
@@ -306,9 +306,9 @@ admin.route(
   }
 
   new Promise(function(resolve, reject) {
-    const dirPath = path.resolve(APPS_FOLDER, params.project_path);
+    const dirPath = resolvePath(APPS_FOLDER, params.project_path);
     // 新建项目目录
-    fs.mkdir(resolvePath(dirPath), function(err) {
+    fs.mkdir(dirPath, function(err) {
       if (err) {
         logger.error(`Create folder ${dirPath} failed: ${err}`);
         reject(CodeError.SetDataError); // 10203
@@ -363,16 +363,20 @@ admin.route(
 
   findProject(+req.params.id).then(([project, index, data]) => {
     // 更新项目信息
-    project.name = params.project_name;
+    // project.name = params.project_name;
     project.link = params.project_link;
     project.alisa = params.project_alisa;
 
     // iOS项目更新index.html
-    if (project.name !== params.project_name && project.type === 'ipa') {
-      buildIndexHtml(project.path, {
-        projectName: project.name,
-        downloadPath: `${req.app.locals.domain.name}/app/${project.path}/`
-      });
+    if (project.name !== params.project_name) {
+      project.name = params.project_name;
+
+      if (project.type === 'ipa') {
+        buildIndexHtml(project.path, {
+          projectName: project.name,
+          downloadPath: `${req.app.locals.domain.name}/app/${project.path}/`
+        });
+      }
     }
 
     // 更新数据文件
@@ -388,11 +392,12 @@ admin.route(
   // ********** 删除项目 ********** //
   findProject(+req.params.id).then(([project, index, data]) => {
     return new Promise(function(resolve, reject) {
+      const projectPath = resolvePath(APPS_FOLDER, project.path);
       // 重命名项目文件夹为<[project_path].del>
-      const targetPath = path.resolve(APPS_FOLDER, `${project.path}.del`);
-      fs.rename(resolvePath(APPS_FOLDER, project.path), resolvePath(targetPath), function(err) {
+      const targetPath = resolvePath(APPS_FOLDER, `${project.path}.del`);
+      fs.rename(projectPath, targetPath, function(err) {
         if (err) {
-          logger.error(`Rename folder ${path.resolve(APPS_FOLDER, project.path)} failed: ${err}`);
+          logger.error(`Rename folder ${projectPath} failed: ${err}`);
           reject(CodeError.SetDataError);
         } else {
           resolve(targetPath);
@@ -465,11 +470,12 @@ admin.post('/project/:pid/icon', upload.single('image'), function(req, res, next
   }).then(gmObj => {
     // 存储图标：icon-512|180|120|57.png
     return findProject(+req.params.pid).then(([project]) => {
-      const projectPath = path.resolve(APPS_FOLDER, project.path);
+      const projectPath = resolvePath(APPS_FOLDER, project.path);
       return new Promise(function(resolve, reject) {
-        gmObj.write(resolvePath(projectPath, 'icon512.png'), err => {
+        const iconFilePath = path.resolve(projectPath, 'icon512.png');
+        gmObj.write(iconFilePath, err => {
           if (err) {
-            logger.error(`Write image ${path.resolve(projectPath, 'icon512.png')} failed: ${err}`);
+            logger.error(`Write image ${iconFilePath} failed: ${err}`);
             reject(CodeError.SetDataError);
           } else {
             resolve([projectPath, 'icon512.png']);
@@ -479,9 +485,10 @@ admin.post('/project/:pid/icon', upload.single('image'), function(req, res, next
         for (let size of [180, 120, 57]) {
           await new Promise(function(resolve, reject) {
             const iconName = `icon${size}.png`;
-            gmObj.resize(size).write(resolvePath(projectPath, iconName), err => {
+            const iconFilePath = path.resolve(projectPath, iconName);
+            gmObj.resize(size).write(iconFilePath, err => {
               if (err) {
-                logger.error(`Write image ${path.resolve(projectPath, iconName)} failed: ${err}`);
+                logger.error(`Write image ${iconFilePath} failed: ${err}`);
                 reject(CodeError.SetDataError);
               } else {
                 resolve(list.push(iconName));
@@ -515,9 +522,10 @@ admin.route(
   // ********** 项目APP列表 ********** //
   findProject(+req.params.pid).then(([project, index, data]) => {
     return new Promise(function(resolve, reject) {
-      fs.readFile(resolvePath(APPS_FOLDER, project.path, 'list.txt'), function(err, data) {
+      const listFilePath = resolvePath(APPS_FOLDER, project.path, 'list.txt');
+      fs.readFile(listFilePath, function(err, data) {
         if (err) {
-          logger.error(`Read file ${path.resolve(APPS_FOLDER, project.path, 'list.txt')} failed: ${err}`);
+          logger.error(`Read file ${listFilePath} failed: ${err}`);
           reject(CodeError.GetDataError);
         } else {
           resolve(data.toString().split('\n').map(line => line.trim()).filter(line => line.length > 0));
@@ -552,9 +560,9 @@ admin.route(
   }
 
   findProject(+req.params.pid).then(([project, index, data]) => {
-    const projectPath = path.resolve(APPS_FOLDER, project.path);
+    const projectPath = resolvePath(APPS_FOLDER, project.path);
     const appFileName = appFile.originalname.trim();
-    
+
     if (project.type === 'ipa' && !params.app_identifier) {
       return Promise.reject(new CodeError(11000, '参数错误'));
     }
@@ -579,7 +587,7 @@ admin.route(
         .pipe(
           fs
             // 有重名文件则失败
-            .createWriteStream(resolvePath(targetPath), { flags: 'wx' })
+            .createWriteStream(targetPath, { flags: 'wx' })
             .on('error', err => {
               logger.error(`Save file ${targetPath} failed: ${err}`);
               reject(CodeError.SetDataError);
@@ -591,9 +599,10 @@ admin.route(
     }).then(() => {
       // 更新项目list.txt
       return new Promise(function(resolve, reject) {
-        fs.appendFile(resolvePath(projectPath, 'list.txt'), `\n${appFileName}`, function(err) {
+        const listFilePath = path.resolve(projectPath, 'list.txt');
+        fs.appendFile(listFilePath, `\n${appFileName}`, function(err) {
           if (err) {
-            logger.error(`Write file ${path.resolve(projectPath, 'list.txt')} failed: ${err}`);
+            logger.error(`Write file ${listFilePath} failed: ${err}`);
             reject(CodeError.SetDataError);
           } else {
             // 返回存储路径
@@ -640,10 +649,10 @@ admin.delete('/project/:pid/apps/:idx', function(req, res, next) {
   }
 
   findProject(+req.params.pid).then(([project, index, data]) => {
-    const listFilePath = path.resolve(APPS_FOLDER, project.path, 'list.txt');
+    const listFilePath = resolvePath(APPS_FOLDER, project.path, 'list.txt');
     return new Promise(function(resolve, reject) {
       // 获取项目APP列表
-      fs.readFile(resolvePath(listFilePath), function(err, data) {
+      fs.readFile(listFilePath, function(err, data) {
         if (err) {
           logger.error(`Read file ${listFilePath} failed: ${err}`);
           reject(CodeError.GetDataError);
@@ -656,7 +665,7 @@ admin.delete('/project/:pid/apps/:idx', function(req, res, next) {
       if (list.splice(+req.params.idx, 1).length) {
         return new Promise(function(resolve, reject) {
           // 更新数据文件
-          fs.writeFile(resolvePath(listFilePath), list.join('\n'), function(err) {
+          fs.writeFile(listFilePath, list.join('\n'), function(err) {
             if (err) {
               logger.log(`Write file ${listFilePath} failed: ${err}`);
               reject(CodeError.SetDataError);
