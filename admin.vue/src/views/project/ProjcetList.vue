@@ -8,16 +8,16 @@
     </el-form>
     <el-table v-loading="isLoading" :data="projectList" stripe>
       <el-table-column type="index" width="50px" />
-      <el-table-column label="项目名称" prop="project_name">
+      <el-table-column label="项目名称" prop="project_name" min-width="210px">
         <template slot-scope="scope">
           {{ scope.row.project_name }}
           <span v-if="scope.row.project_alisa">({{ scope.row.project_alisa }})</span>
         </template>
       </el-table-column>
-      <el-table-column label="项目类型" prop="project_type">
+      <el-table-column label="项目类型" prop="project_type" width="140px">
         <template slot-scope="scope">{{ scope.row.project_type | projectTypeName }}</template>
       </el-table-column>
-      <el-table-column label="URL路径" prop="project_path">
+      <el-table-column label="URL路径" prop="project_path" min-width="160px">
         <template slot-scope="scope">
           {{ scope.row.project_path }}
           <a v-if="scope.row.project_link" :href="scope.row.project_link" target="_blank">链接</a>

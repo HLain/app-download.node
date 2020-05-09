@@ -14,8 +14,8 @@ Vue.filter('dateReadable', function (date) {
 })
 
 const projectTypeName = {
-  apk: 'Android应用',
-  ipa: 'iOS应用'
+  apk: 'Android',
+  ipa: 'iOS'
 }
 Vue.filter('projectTypeName', function (type) {
   return projectTypeName[type] || '未知'

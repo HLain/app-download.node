@@ -22,7 +22,10 @@
     <el-container>
       <el-header style="line-height:60px;text-align:right;background-color:#b3c0d1;">
         <el-dropdown @command="handleCommand">
-          <i class="btn el-icon-setting fc-menu fs-page">{{ userInfo.userName }}</i>
+          <span class="btn fc-menu fs-page">
+            <i class="el-icon-setting" />
+            {{ userInfo.userName }}
+          </span>
           <el-dropdown-menu slot="dropdown">
             <el-dropdown-item command="Logout">退出</el-dropdown-item>
           </el-dropdown-menu>

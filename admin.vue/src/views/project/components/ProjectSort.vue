@@ -1,6 +1,7 @@
 <template>
   <el-dialog
     :close-on-click-modal="false"
+    class="m-transfer"
     title="项目排序"
     visible
     center

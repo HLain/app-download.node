@@ -17,6 +17,9 @@ body,
     max-height: 52vh;
     overflow-y: auto;
   }
+  .m-transfer & {
+    width: 724px;
+  }
   .el-transfer-panel {
     width: 245px;
   }

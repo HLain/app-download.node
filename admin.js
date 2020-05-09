@@ -28,6 +28,8 @@ const {
   writeJsonFile
 } = require('./utils/file-path');
 
+require('./utils/js-extend');
+
 const upload = multer({
   dest: os.tmpdir(),
   limits: {
@@ -36,38 +38,48 @@ const upload = multer({
 });
 
 const SESSION_KEY  = 'sessionid'; // 会话ID的cookie名称
-const APPS_FOLDER  = 'public/app'; // 存储上传APP的目录
+const APPS_FOLDER  = 'public/apps'; // 存储上传APP的目录
 const PROJECT_FILE = 'project-list.json'; // 项目列表存储文件
+const EXPIRED_TIME = 7200000; // 2H: 2*60*60*1000
 
 function hashMd5(str) {
   return crypto.createHash('md5').update(str).digest('hex');
 }
 
-// projectId为0，则返回整个项目列表
-function findProject(projectId) {
-  return readJsonFile(PROJECT_FILE).then(data => {
-    return new Promise(function(resolve, reject) {
-      if (projectId === 0) {
-        resolve([null, -1, data]);
-      } else if (!data.list.find((item, index) => {
-        if (item.id === projectId) {
-          resolve([item, index, data]);
-          return true;
-        }
-      })) {
-        reject(new CodeError(10204, 'Data Not Found'));
-      }
-    });
+function sendSuccess(res, data, message = 'success') {
+  res.json({
+    code: 10000,
+    msg: message,
+    data
   });
+}
+function packAsyncHandler(middleware) {
+  return function(req, res, next) {
+    middleware(req, res).catch(next);
+  }
+}
+
+// projectId为0，则返回整个项目列表
+async function findProject(projectId) {
+  const data = await readJsonFile(PROJECT_FILE);
+
+  if (projectId <= 0) return [null, -1, data];
+
+  const index = data.list.findIndex(item => item.id === projectId);
+
+  if (index === -1) throw CodeError.DATA_NOT_FOUND;
+
+  return [data.list[index], index, data];
 }
 
 function buildProjectFile(fileName, projectPath, data) {
   return new Promise(function(resolve, reject) {
     // 获取模板文件并渲染
-    fs.readFile(resolvePath(`tpl/${fileName}.ejs`), (err, file) => {
+    fs.readFile(resolvePath(`tmpl/${fileName}.ejs`), (err, file) => {
       if (err) {
-        logger.error(`Read file tpl/${fileName}.ejs failed: ${err}`);
-        reject(CodeError.GetDataError);
+        logger.error(`Read file tmpl/${fileName}.ejs failed: ${err}`);
+
+        reject(CodeError.GET_DATA_ERROR);
       } else {
         resolve(template.render(file.toString(), data));
       }
@@ -76,10 +88,12 @@ function buildProjectFile(fileName, projectPath, data) {
     // 将生成文件保存到项目目录下
     return new Promise(function(resolve, reject) {
       const filePath = resolvePath(APPS_FOLDER, projectPath, fileName);
+
       fs.writeFile(filePath, text, err => {
         if (err) {
           logger.error(`Write file ${filePath} failed: ${err}`);
-          reject(CodeError.SetDataError);
+
+          reject(CodeError.SET_DATA_ERROR);
         } else {
           // 返回项目文件保存路径
           resolve(filePath);
@@ -95,39 +109,10 @@ function buildIndexHtml(projectPath, data) {
   return buildProjectFile('index.html', projectPath, data);
 }
 
-
-// option: 'YYYY-MM-DD hh:mm:ss.SSS'
-Object.defineProperty(Date.prototype, 'format', { value: function(fmt) {
-  var o = {
-    // '(Y+)': this.getFullYear(),
-    '(M+)': this.getMonth() + 1,
-    '(D+)': this.getDate(),
-    '(h+)': this.getHours(),
-    '(m+)': this.getMinutes(),
-    '(s+)': this.getSeconds(),
-    '(S+)': this.getMilliseconds()
-  };
-  if (/(Y+)/.test(fmt)) {
-    fmt = fmt.replace(RegExp.$1, ('' + this.getFullYear()).substring(4 - RegExp.$1.length))
-  }
-  for (var k in o) {
-    if (!o.hasOwnProperty(k)) continue;
-    if (new RegExp(k).test(fmt)) {
-      fmt = fmt.replace(RegExp.$1, ('' + o[k]).padStart(RegExp.$1.length, 0));
-    }
-  }
-  return fmt;
-}});
-
-// output: 'YYYY-MM-DD hh:mm:ss'
-Object.defineProperty(Date.prototype, 'toUnified', { value: function() {
-  return this.format('YYYY-MM-DD hh:mm:ss');
-}});
-
-
 // 获取管理账号
 {
   const config = require('./config/admin.conf');
+
   admin.locals.domain = {
     name: config.domain,
     token: uuidv5(config.domain, uuidv5.URL)
@@ -157,31 +142,35 @@ admin.all('*', function(req, res, next) {
     const cookieToken = req.cookies[SESSION_KEY];
     const accessToken = req.get('Authorization');
     const adminAuth = req.app.locals.user || {};
+
     if (!cookieToken || !accessToken) {
-      res.json({
-        code: 10105,
-        msg: '用户未登录'
-      });
-    } else if (cookieToken !== adminAuth.name || accessToken !== adminAuth.token || adminAuth.timestamp < Date.now()) {
+      throw new CodeError(10105, '用户未登录');
+    }
+    else if (
+      cookieToken !== adminAuth.name ||
+      accessToken !== adminAuth.token ||
+      adminAuth.timestamp < Date.now()
+    ) {
       res.clearCookie(SESSION_KEY, {
         domain: req.hostname,
         path: req.app.mountpath
       });
-      res.json({
-        code: 10106,
-        msg: '授权过期'
-      });
-    } else {
+
+      throw new CodeError(10106, '授权过期');
+    }
+    else {
       // 剩余时效小于1小时，则再延长2小时
       if (adminAuth.timestamp - Date.now() < 3600000) {
-        adminAuth.timestamp = Date.now() + 7200000;
+        adminAuth.timestamp = Date.now() + EXPIRED_TIME;
+
         res.cookie(SESSION_KEY, adminAuth.name, {
           domain: req.hostname,
           path: req.app.mountpath,
           httpOnly: true,
-          maxAge: 7200000
+          maxAge: EXPIRED_TIME
         });
       }
+
       next();
     }
   }
@@ -190,137 +179,138 @@ admin.all('*', function(req, res, next) {
 // 登录
 admin.post('/login/signin', function(req, res) {
   const store = req.app.locals;
-  if (req.body.username !== store.auth.username || req.body.password !== store.auth.password) {
-    return void res.json({
-      code: 10100,
-      msg: '用户名或密码错误'
-    })
+
+  if (
+    req.body.username !== store.auth.username ||
+    req.body.password !== store.auth.password
+  ) {
+    throw new CodeError(10100, '用户名或密码错误');
   }
 
   const timestamp = Date.now();
   const cookieToken = hashMd5(`${store.auth.username}:${store.auth.password}T${timestamp}`);
   const accessToken = uuidv5(cookieToken, store.domain.token);
+
   store.user = {
     name: cookieToken,
     token: accessToken,
-    timestamp: timestamp + 7200000 // 2*60*60*1000
+    timestamp: timestamp + EXPIRED_TIME
   };
+
   res.cookie(SESSION_KEY, cookieToken, {
     domain: req.hostname,
     path: req.app.mountpath,
     httpOnly: true,
-    maxAge: 7200000
+    maxAge: EXPIRED_TIME
   });
-  res.json({
-    code: 10000,
-    msg: '登录成功',
-    data: {
-      user_id: store.auth.userid,
-      token: accessToken,
-      expire: 7200
-    }
-  });
+
+  sendSuccess(res, {
+    user_id: store.auth.userid,
+    token: accessToken,
+    expire: EXPIRED_TIME / 1000
+  }, '登录成功');
 });
 
 // 退出
 admin.delete('/user/logout', function(req, res) {
   req.app.locals.user = null;
+
   res.clearCookie(SESSION_KEY, {
     domain: req.hostname,
     path: req.app.mountpath
   });
-  res.json({
-    code: 10000,
-    msg: '退出成功'
-  });
+
+  sendSuccess(res, null, '退出成功');
 });
 
 // app版本更新检测
-admin.get('/version/:project/:type', function(req, res, next) {
-  findProject(0).then(([project, , data]) => {
-    const params = req.params;
-    const projectPath = params.project + params.type;
-    if (project = data.list.find(project => project.path === projectPath)) {
-      res.json({
-        code: 10000,
-        msg: 'success',
-        data: {
-          app_version: project.appVersion || '0',
-          download_uri: params.type === 'ipa'
-            ? `itms-services://?action=download-manifest&url=${req.app.locals.domain.name}/app/${projectPath}/describe.plist`
-            : `${req.app.locals.domain.name}/app/${projectPath}.dn`,
-          is_force: true
+admin.get('/version/:project/:type', packAsyncHandler(async function(req, res,) {
+  const params = req.params;
+  const projectPath = params.project + params.type;
+
+  let [project, , data] = await findProject(0);
+
+  if (project = data.list.find(project => project.path === projectPath)) {
+    sendSuccess(res, {
+      app_version: project.appVersion || '0',
+      download_uri: project.type === 'ipa'
+        ? `itms-services://?action=download-manifest&url=${req.app.locals.domain.name}/app/${projectPath}/describe.plist`
+        : `${req.app.locals.domain.name}/app/${projectPath}.dn`,
+      is_force: project.isForce || false
+    });
+  } else {
+    throw CodeError.DATA_NOT_FOUND;
+  }
+}));
+
+admin.route('/project/list')
+  // 项目列表
+  .get(packAsyncHandler(async function(req, res) {
+    const [, , { list }] = await findProject(0);
+    
+    sendSuccess(res, {
+      project_list: list.map(item => {
+        return {
+          project_id: item.id,
+          project_name: item.name,
+          project_type: item.type,
+          project_path: item.path,
+          project_link: item.link || '',
+          project_alisa: item.alisa || '',
+          app_version: item.appVersion || '',
+          app_identifier: item.appIdentifier || '',
+          create_time: new Date(item.ctime * 1000).toUnified(),
+          update_time: item.mtime ? new Date(item.mtime * 1000).toUnified() : ''
+        }
+      })
+    });
+  }))
+  // 新增项目
+  .post(packAsyncHandler(async function(req, res,) {
+    const params = req.body;
+
+    if (
+      !params.project_name ||
+      !params.project_path ||
+      !params.project_type
+    ) {
+      throw CodeError.BAD_PARAMETERS;
+    }
+    else if (!['apk', 'ipa'].includes(params.project_type)) {
+      throw new CodeError(
+        CodeError.BAD_PARAMETERS.code,
+        '[project_type]取值错误'
+      );
+    }
+    else if (!/^[0-9a-zA-Z]+$/.test(params.project_path)) {
+      throw new CodeError(
+        CodeError.BAD_PARAMETERS.code,
+        '[project_path]只能包含英文字母及数字'
+      );
+    }
+
+    // 将类型代码补全到路径末尾
+    if (params.project_path.slice(-params.project_type.length) !== params.project_type) {
+      params.project_path += params.project_type;
+    }
+
+    await new Promise(function(resolve, reject) {
+      const projectPath = resolvePath(APPS_FOLDER, params.project_path);
+
+      // 新建项目目录
+      fs.mkdir(projectPath, function(err) {
+        if (err) {
+          logger.error(`Create folder ${projectPath} failed: ${err}`);
+
+          reject(CodeError.SET_DATA_ERROR);
+        } else {
+          resolve();
         }
       });
-    } else {
-      throw new CodeError(10204, 'Data Not Found');
-    }
-  }).catch(e => void next(e));
-});
+    });
 
-// 项目列表
-admin.route(
-  '/project/list'
-).get(function(req, res, next) {
-  // ********** 项目列表 ********** //
-  readJsonFile(PROJECT_FILE).then(({ list }) => {
-    res.json({
-      code: 10000,
-      msg: 'success',
-      data: {
-        project_list: list.map(item => {
-          return {
-            project_id: item.id,
-            project_name: item.name,
-            project_type: item.type,
-            project_path: item.path,
-            project_link: item.link,
-            project_alisa: item.alisa || '',
-            app_version: item.appVersion,
-            app_identifier: item.appIdentifier,
-            create_time: new Date(item.createTime * 1000).toUnified(),
-            update_time: item.updateTime && new Date(item.updateTime * 1000).toUnified()
-          }
-        })
-      }
-    });
-  }).catch(e => void next(e));
-}).post(function(req, res, next) {
-  // ********** 新增项目 ********** //
-  const params = req.body;
-  if (!params.project_name || !params.project_path || !params.project_type) {
-    return void res.json({
-      code: 11000,
-      msg: '参数错误'
-    });
-  } else if (!['apk', 'ipa'].includes(params.project_type)) {
-    return void res.json({
-      code: 11000,
-      msg: '[project_type]取值错误'
-    });
-  } else if (!/^[0-9a-zA-Z]+$/.test(params.project_path)) {
-    return void res.json({
-      code: 11000,
-      msg: '[project_path]只能包含英文字母及数字'
-    });
-  }
-
-  new Promise(function(resolve, reject) {
-    const dirPath = resolvePath(APPS_FOLDER, params.project_path);
-    // 新建项目目录
-    fs.mkdir(dirPath, function(err) {
-      if (err) {
-        logger.error(`Create folder ${dirPath} failed: ${err}`);
-        reject(CodeError.SetDataError); // 10203
-      } else {
-        resolve(dirPath);
-      }
-    });
-  }).then(() => {
-    // 获取项目列表
-    return readJsonFile(PROJECT_FILE);
-  }).then(data => {
-    // 保存项目信息
+    const [, , data] = await findProject(0);
+    // 项目信息
     const project = {
       id: data.counter += 1,
       name: params.project_name,
@@ -328,10 +318,12 @@ admin.route(
       path: params.project_path,
       link: params.project_link,
       alisa: params.project_alisa,
-      createTime: Math.floor(Date.now() / 1000),
-      updateTime: null
+      ctime: Math.floor(Date.now() / 1000),
+      mtime: null
     };
+
     data.list.push(project);
+
     // iOS项目更新index.html
     if (project.type === 'ipa') {
       buildIndexHtml(project.path, {
@@ -339,38 +331,31 @@ admin.route(
         downloadPath: `${req.app.locals.domain.name}/app/${project.path}/`
       });
     }
-    // 更新数据文件
-    return writeJsonFile(PROJECT_FILE, data);
-  }).then(() => {
-    // 所有操作都成功了！
-    res.json({
-      code: 10000,
-      msg: 'success'
-    });
-  }).catch(e => void next(e));
-});
-admin.route(
-  '/project/list/:id'
-).put(function(req, res, next) {
-  // ********** 编辑项目 ********** //
-  const params = req.body;
-  if (!params.project_name) {
-    return void res.json({
-      code: 11000,
-      msg: '参数错误'
-    });
-  }
 
-  findProject(+req.params.id).then(([project, index, data]) => {
-    // 更新项目信息
+    // 更新项目文件
+    await writeJsonFile(PROJECT_FILE, data);
+
+    sendSuccess(res);
+  }));
+
+admin.route('/project/list/:id')
+  // 编辑项目
+  .put(packAsyncHandler(async function(req, res) {
+    const params = req.body;
+
+    if (!params.project_name) {
+      throw CodeError.BAD_PARAMETERS;
+    }
+
+    const [project, index, data] = await findProject(+req.params.id);
     // project.name = params.project_name;
     project.link = params.project_link;
     project.alisa = params.project_alisa;
 
-    // iOS项目更新index.html
     if (project.name !== params.project_name) {
       project.name = params.project_name;
 
+      // iOS项目更新index.html
       if (project.type === 'ipa') {
         buildIndexHtml(project.path, {
           projectName: project.name,
@@ -379,202 +364,203 @@ admin.route(
       }
     }
 
-    // 更新数据文件
-    return writeJsonFile(PROJECT_FILE, data);
-  }).then(() => {
-    // 所有操作都成功了！
-    res.json({
-      code: 10000,
-      msg: 'success'
-    });
-  }).catch(e => void next(e));
-}).delete(function(req, res, next) {
-  // ********** 删除项目 ********** //
-  findProject(+req.params.id).then(([project, index, data]) => {
-    return new Promise(function(resolve, reject) {
+    // 更新项目文件
+    await writeJsonFile(PROJECT_FILE, data);
+
+    sendSuccess(res);
+  }))
+  // 删除项目
+  .delete(packAsyncHandler(async function(req, res) {
+    const [project, index, data] = await findProject(+req.params.id);
+
+    await new Promise(function(resolve, reject) {
       const projectPath = resolvePath(APPS_FOLDER, project.path);
+
       // 重命名项目文件夹为<[project_path].del>
-      const targetPath = resolvePath(APPS_FOLDER, `${project.path}.del`);
-      fs.rename(projectPath, targetPath, function(err) {
-        if (err) {
-          logger.error(`Rename folder ${projectPath} failed: ${err}`);
-          reject(CodeError.SetDataError);
-        } else {
-          resolve(targetPath);
+      fs.rename(
+        projectPath,
+        resolvePath(APPS_FOLDER, `${project.path}.del`),
+        function(err) {
+          if (err) {
+            logger.error(`Rename folder ${projectPath} failed: ${err}`);
+
+            reject(CodeError.SET_DATA_ERROR);
+          } else {
+            resolve();
+          }
         }
-      });
-    }).then(() => {
-      // 从项目列表中删除
-      data.list.splice(index, 1);
-      data.lose.push(project);
-      return writeJsonFile(PROJECT_FILE, data);
+      );
     });
-  }).then(() => {
-    // 所有操作都成功了！
-    res.json({
-      code: 10000,
-      msg: 'success'
-    });
-  }).catch(e => void next(e));
-});
+        
+    // 从项目列表中删除
+    data.list.splice(index, 1);
+    data.lose.push(project);
+    // 更新项目文件
+    await writeJsonFile(PROJECT_FILE, data);
+          
+    sendSuccess(res);
+  }));
 
 // 项目排序
-admin.post('/project/sort', function(req, res, next) {
+admin.post('/project/sort', packAsyncHandler(async function(req, res) {
   const idxs = (req.body.id_list || []).map(id => +id);
+
   if (!idxs.length) {
-    return void res.json({
-      code: 11000,
-      msg: '参数错误'
-    });
+    throw CodeError.BAD_PARAMETERS;
   }
 
-  findProject(0).then(([, , data]) => {
-    const newList = new Array(idxs.length);
-    data.list.forEach(project => {
-      const index = idxs.indexOf(project.id);
-      if (index > -1) {
-        newList[index] = project;
-      } else {
-        newList.push(project);
-      }
-    });
-    // 参数id_list中可能有无效ID，清除空位
-    data.list = newList.filter(project => !!project);
-    // 更新数据文件
-    return writeJsonFile(PROJECT_FILE, data);
-  }).then(() => {
-    // 所有操作都成功了！
-    res.json({
-      code: 10000,
-      msg: 'success'
-    });
-  }).catch(e => void next(e));;
-});
+  const [, , data] = await findProject(0);
+  const newList = new Array(idxs.length);
+
+  data.list.forEach(project => {
+    const index = idxs.indexOf(project.id);
+
+    if (index > -1) {
+      newList[index] = project;
+    } else {
+      newList.push(project);
+    }
+  });
+  // 参数id_list中可能有无效ID，清除空位
+  data.list = newList.filter(project => !!project);
+
+  // 更新数据文件
+  await writeJsonFile(PROJECT_FILE, data);
+
+  sendSuccess(res);
+}));
 
 // 项目ICON
-admin.post('/project/:pid/icon', upload.single('image'), function(req, res, next) {
-  new Promise(function(resolve, reject) {
+admin.post(
+  '/project/:pid/icon',
+  upload.single('image'),
+  packAsyncHandler(async function(req, res) {
+    const gmObj = gm(req.file.path);
+
     // 检测图片是否符合要求
-    const gmObj = gm(req.file.path).size((err, size) => {
-      if (err) {
-        logger.error(`Read image ${req.file.path} failed: ${err}`)
-        reject(CodeError.GetDataError);
-      } else {
-        if (size.width !== 512 || size.height !== 512) {
-          reject(new CodeError(12000, '图片尺寸错误'));
+    await new Promise(function(resolve, reject) {
+      gmObj.size((err, size) => {
+        if (err) {
+          logger.error(`Read image ${req.file.path} failed: ${err}`);
+
+          reject(CodeError.GET_DATA_ERROR);
         } else {
-          resolve(gmObj);
-        }
-      }
-    });
-  }).then(gmObj => {
-    // 存储图标：icon-512|180|120|57.png
-    return findProject(+req.params.pid).then(([project]) => {
-      const projectPath = resolvePath(APPS_FOLDER, project.path);
-      return new Promise(function(resolve, reject) {
-        const iconFilePath = path.resolve(projectPath, 'icon512.png');
-        gmObj.write(iconFilePath, err => {
-          if (err) {
-            logger.error(`Write image ${iconFilePath} failed: ${err}`);
-            reject(CodeError.SetDataError);
+          if (size.width !== 512 || size.height !== 512) {
+            reject(new CodeError(12000, '图片尺寸错误'));
           } else {
-            resolve([projectPath, 'icon512.png']);
+            resolve(gmObj);
           }
-        });
-      }).then(async list => {
-        for (let size of [180, 120, 57]) {
-          await new Promise(function(resolve, reject) {
-            const iconName = `icon${size}.png`;
-            const iconFilePath = path.resolve(projectPath, iconName);
-            gmObj.resize(size).write(iconFilePath, err => {
-              if (err) {
-                logger.error(`Write image ${iconFilePath} failed: ${err}`);
-                reject(CodeError.SetDataError);
-              } else {
-                resolve(list.push(iconName));
-              }
-            });
-          });
         }
-        return list;
       });
     });
-  }).then(() => {
+
+    const [project] = await findProject(+req.params.pid);
+    const projectPath = resolvePath(APPS_FOLDER, project.path);
+
+    // 存储图标：icon-512.png
+    await new Promise(function(resolve, reject) {
+      const iconFilePath = path.resolve(projectPath, 'icon512.png');
+
+      gmObj.write(iconFilePath, err => {
+        if (err) {
+          logger.error(`Write image ${iconFilePath} failed: ${err}`);
+
+          reject(CodeError.SET_DATA_ERROR);
+        } else {
+          resolve();
+        }
+      });
+    });
+    // 存储图标：icon-180|120|57.png
+    for (let size of [180, 120, 57]) {
+      await new Promise(function(resolve, reject) {
+        const iconFilePath = path.resolve(projectPath, `icon${size}.png`);
+
+        gmObj.resize(size).write(iconFilePath, err => {
+          if (err) {
+            logger.error(`Write image ${iconFilePath} failed: ${err}`);
+
+            reject(CodeError.SET_DATA_ERROR);
+          } else {
+            resolve();
+          }
+        });
+      });
+    }
+
     // 删除临时文件
     fs.unlink(req.file.path, err => {
       if (err) {
         logger.warn(`Remove file ${req.file.path} failed: ${err}`);
       }
     });
-  }).then(() => {
-    // 所有操作都成功了！
-    res.json({
-      code: 10000,
-      msg: 'success'
-    });
-  }).catch(e => void next(e));
-});
+
+    sendSuccess(res);
+  })
+);
 
 // 项目APP
-admin.route(
-  '/project/:pid/apps'
-).get(function(req, res, next) {
-  // ********** 项目APP列表 ********** //
-  findProject(+req.params.pid).then(([project, index, data]) => {
-    return new Promise(function(resolve, reject) {
+admin.route('/project/:pid/apps')
+  // 项目APP列表
+  .get(packAsyncHandler(async function(req, res) {
+    const [project] = await findProject(+req.params.pid);
+
+    const appList = await new Promise(function(resolve, reject) {
       const listFilePath = resolvePath(APPS_FOLDER, project.path, 'list.txt');
+
       fs.readFile(listFilePath, function(err, data) {
         if (err) {
           logger.error(`Read file ${listFilePath} failed: ${err}`);
-          reject(CodeError.GetDataError);
+
+          reject(CodeError.GET_DATA_ERROR);
         } else {
-          resolve(data.toString().split('\n').map(line => line.trim()).filter(line => line.length > 0));
+          resolve(
+            data
+              .toString()
+              .split('\n')
+              .map(line => line.trim())
+              .filter(line => line.length > 0)
+            );
         }
       });
     });
-  }).then(list => {
-    // 所有操作都成功了！
-    res.json({
-      code: 10000,
-      msg: 'success',
-      data: {
-        app_list: list
-      }
-    });
-  }).catch(e => void next(e));
-}).post(upload.single('file'), function(req, res, next) {
-  // ********** 上传项目APP ********** //
-  const params = req.body;
-  const appFile = req.file;
-  if (!params.app_version) {
-    return void res.json({
-      code: 11000,
-      msg: '参数错误'
-    });
-  } else if (/^\.|[\/\\]/.test(appFile.originalname)) {
-    // 文件名不能以.开始且不包含分隔符\和/
-    return void res.json({
-      code: 11010,
-      msg: '文件名包含非法字符'
-    });
-  }
 
-  findProject(+req.params.pid).then(([project, index, data]) => {
+    sendSuccess(res, { app_list: appList });
+  }))
+  // 上传项目APP
+  .post(upload.single('file'), packAsyncHandler(async function(req, res) {
+    const params = req.body;
+    const appFile = req.file;
+
+    if (!params.app_version) {
+      throw CodeError.BAD_PARAMETERS;
+    }
+    else if (/^\.|[\/\\]/.test(appFile.originalname)) {
+      // 文件名不能以.开始且不包含分隔符\和/
+      throw new CodeError(
+        CodeError.BAD_PARAMETERS.code,
+        '文件名包含非法字符'
+      );
+    }
+
+    const [project, index, data] = await findProject(+req.params.pid);
     const projectPath = resolvePath(APPS_FOLDER, project.path);
     const appFileName = appFile.originalname.trim();
 
     if (project.type === 'ipa' && !params.app_identifier) {
-      return Promise.reject(new CodeError(11000, '参数错误'));
+      throw CodeError.BAD_PARAMETERS;
     }
 
-    return new Promise(function(resolve, reject) {
-      // 转存APP文件到项目目录
+    // 转存APP文件到项目目录
+    await new Promise(function(resolve, reject) {
       const targetPath = path.resolve(projectPath, appFileName);
+
       fs
         .createReadStream(appFile.path)
         .on('error', err => {
           logger.error(`Save file ${appFile.path} failed: ${err}`);
-          reject(CodeError.SetDataError);
+
+          reject(CodeError.SET_DATA_ERROR);
         })
         .on('end', () => {
           // 删除临时文件
@@ -590,101 +576,102 @@ admin.route(
             .createWriteStream(targetPath, { flags: 'wx' })
             .on('error', err => {
               logger.error(`Save file ${targetPath} failed: ${err}`);
-              reject(CodeError.SetDataError);
+
+              reject(CodeError.SET_DATA_ERROR);
             })
             .on('finish', () => {
+              // 返回存储路径
               resolve(targetPath);
             })
         );
-    }).then(() => {
-      // 更新项目list.txt
-      return new Promise(function(resolve, reject) {
-        const listFilePath = path.resolve(projectPath, 'list.txt');
-        fs.appendFile(listFilePath, `\n${appFileName}`, function(err) {
-          if (err) {
-            logger.error(`Write file ${listFilePath} failed: ${err}`);
-            reject(CodeError.SetDataError);
-          } else {
-            // 返回存储路径
-            resolve(path.resolve(projectPath, appFileName));
-          }
-        });
-      });
-    }).then(() => {
-      // 更新项目列表
-      project.appVersion = params.app_version;
-      project.updateTime = Math.floor(Date.now() / 1000);
-      if (project.type === 'ipa') {
-        project.appIdentifier = params.app_identifier;
-      }
+    });
 
-      return writeJsonFile(PROJECT_FILE, data);
-    }).then(() => {
-      // iOS项目更新文件describe.plist
-      if (project.type === 'ipa') {
-        return buildDescribePlist(project.path, {
-          projectName: project.name,
-          downloadPath: `${req.app.locals.domain.name}/app/${project.path}/`,
-          appName: appFileName,
-          appVersion: params.app_version,
-          appIdentifier: params.app_identifier
-        });
+    // 更新项目list.txt
+    await new Promise(function(resolve, reject) {
+      const listFilePath = path.resolve(projectPath, 'list.txt');
+
+      fs.appendFile(listFilePath, `\n${appFileName}`, function(err) {
+        if (err) {
+          logger.error(`Write file ${listFilePath} failed: ${err}`);
+
+          reject(CodeError.SET_DATA_ERROR);
+        } else {
+          resolve();
+        }
+      });
+    });
+
+    // 更新项目列表
+    project.appVersion = params.app_version;
+    project.isForce = !!params.is_force && params.is_force !== 'false';
+    project.mtime = Math.floor(Date.now() / 1000);
+
+    if (project.type === 'ipa') {
+      project.appIdentifier = params.app_identifier;
+    }
+
+    await writeJsonFile(PROJECT_FILE, data);
+
+    // iOS项目更新文件describe.plist
+    if (project.type === 'ipa') {
+      await buildDescribePlist(project.path, {
+        projectName: project.name,
+        downloadPath: `${req.app.locals.domain.name}/app/${project.path}/`,
+        appName: appFileName,
+        appVersion: params.app_version,
+        appIdentifier: params.app_identifier
+      });
+    }
+
+    sendSuccess(res);
+  }));
+
+// 从项目APP列表中移除
+admin.delete('/project/:pid/apps/:idx', packAsyncHandler(async function(req, res) {
+  if (+req.params.idx < 0) {
+    throw CodeError.BAD_PARAMETERS;
+  }
+
+  const [project] = await findProject(+req.params.pid);
+  const listFilePath = resolvePath(APPS_FOLDER, project.path, 'list.txt');
+
+  // 获取项目APP列表
+  const appList = await new Promise(function(resolve, reject) {
+    fs.readFile(listFilePath, function(err, data) {
+      if (err) {
+        logger.error(`Read file ${listFilePath} failed: ${err}`);
+
+        reject(CodeError.GET_DATA_ERROR);
+      } else {
+        resolve(
+          data
+            .toString()
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line.length > 0)
+        );
       }
     });
-  }).then(() => {
-    // 所有操作都成功了！
-    res.json({
-      code: 10000,
-      msg: 'success'
-    });
-  }).catch(e => void next(e));
-});
-admin.delete('/project/:pid/apps/:idx', function(req, res, next) {
-  // ********** 从项目APP列表中移除 ********** //
-  if (+req.params.idx < 0) {
-    return void res.json({
-      code: 11000,
-      msg: '参数错误'
+  });
+
+  // 从项目APP列表中删除
+  if (appList.splice(+req.params.idx, 1).length) {
+    await new Promise(function(resolve, reject) {
+      // 更新数据文件
+      fs.writeFile(listFilePath, appList.join('\n'), function(err) {
+        if (err) {
+          logger.log(`Write file ${listFilePath} failed: ${err}`);
+
+          reject(CodeError.SET_DATA_ERROR);
+        } else {
+          resolve();
+        }
+      });
     });
   }
 
-  findProject(+req.params.pid).then(([project, index, data]) => {
-    const listFilePath = resolvePath(APPS_FOLDER, project.path, 'list.txt');
-    return new Promise(function(resolve, reject) {
-      // 获取项目APP列表
-      fs.readFile(listFilePath, function(err, data) {
-        if (err) {
-          logger.error(`Read file ${listFilePath} failed: ${err}`);
-          reject(CodeError.GetDataError);
-        } else {
-          resolve(data.toString().split('\n').map(line => line.trim()).filter(line => line.length > 0));
-        }
-      });
-    }).then(list => {
-      // 从项目APP列表中删除
-      if (list.splice(+req.params.idx, 1).length) {
-        return new Promise(function(resolve, reject) {
-          // 更新数据文件
-          fs.writeFile(listFilePath, list.join('\n'), function(err) {
-            if (err) {
-              logger.log(`Write file ${listFilePath} failed: ${err}`);
-              reject(CodeError.SetDataError);
-            } else {
-              // 返回剩余列表
-              resolve(list);
-            }
-          });
-        });
-      }
-    });
-  }).then(() => {
-    // 所有操作都成功了！
-    res.json({
-      code: 10000,
-      msg: 'success'
-    });
-  }).catch(e => void next(e));
-});
+  sendSuccess(res);
+}));
 
 // 错误处理
 admin.use(function(err, req, res, next) {
@@ -695,7 +682,7 @@ admin.use(function(err, req, res, next) {
 
   res.json({
     code: err.code || 10500,
-    msg: err.toString()
+    msg: err.message || err.toString()
   });
 });
 

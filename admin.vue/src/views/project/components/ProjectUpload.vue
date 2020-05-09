@@ -32,6 +32,12 @@
       <el-form-item v-if="data.project_type === 'ipa'" label="签名标识：" prop="app_identifier">
         <el-input v-model.trim="formData.app_identifier" type="text" placeholder="以点号[.]连接的英文字母和数字组合" />
       </el-form-item>
+      <el-form-item label="强制更新：" prop="is_force">
+        <el-radio-group v-model="formData.is_force">
+          <el-radio :label="false">否</el-radio>
+          <el-radio :label="true">是</el-radio>
+        </el-radio-group>
+      </el-form-item>
     </el-form>
     <div slot="footer">
       <el-button :disabled="isSubmitting" @click="$emit('notify')">取消</el-button>
@@ -67,7 +73,8 @@ export default {
         project_id: od.project_id,
         project_path: od.project_path,
         app_version: '',
-        app_identifier: od.app_identifier || ''
+        app_identifier: od.app_identifier || '',
+        is_force: false
       },
       formRules: {
         app_version: [
