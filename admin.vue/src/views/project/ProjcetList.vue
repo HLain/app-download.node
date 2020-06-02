@@ -8,33 +8,33 @@
     </el-form>
     <el-table v-loading="isLoading" :data="projectList" stripe>
       <el-table-column type="index" width="50px" />
-      <el-table-column label="项目名称" prop="project_name" min-width="210px">
+      <el-table-column label="项目名称" prop="project_name" min-width="190px">
         <template slot-scope="scope">
           {{ scope.row.project_name }}
           <span v-if="scope.row.project_alisa">({{ scope.row.project_alisa }})</span>
         </template>
       </el-table-column>
-      <el-table-column label="项目类型" prop="project_type" width="140px">
+      <el-table-column label="项目类型" prop="project_type" min-width="100px">
         <template slot-scope="scope">{{ scope.row.project_type | projectTypeName }}</template>
       </el-table-column>
-      <el-table-column label="URL路径" prop="project_path" min-width="160px">
+      <el-table-column label="URL路径" prop="project_path" min-width="165px">
         <template slot-scope="scope">
           {{ scope.row.project_path }}
           <a v-if="scope.row.project_link" :href="scope.row.project_link" target="_blank">链接</a>
         </template>
       </el-table-column>
-      <el-table-column label="创建时间" width="160px">
+      <el-table-column label="创建时间" min-width="140px">
         <template slot-scope="scope">{{ scope.row.create_time | dateReadable }}</template>
       </el-table-column>
-      <el-table-column label="APP更新" width="160px">
+      <el-table-column label="APP更新" min-width="140px">
         <template slot-scope="scope">{{ scope.row.update_time | dateReadable }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="250px">
+      <el-table-column label="操作" min-width="240px">
         <template slot-scope="scope">
           <el-button :disabled="scope.row.mLoading" type="warning" size="small" icon="el-icon-edit" title="编辑项目" circle @click="handleProject(1, scope.row)" />
           <el-button :loading="scope.row.mLoading" type="danger" size="small" icon="el-icon-delete" title="删除项目" circle @click="handleRemove(scope.row, scope.$index)" />
           <el-button :disabled="scope.row.mLoading" type="primary" size="small" icon="el-icon-upload" title="上传APP" circle @click="handleProject(2, scope.row)" />
-          <el-button :disabled="scope.row.mLoading || !scope.row.update_time" type="success" size="small" icon="el-icon-goods" title="APP列表" circle @click="handleProject(3, scope.row)" />
+          <el-button :disabled="scope.row.mLoading" type="success" size="small" icon="el-icon-goods" title="APP列表" circle @click="handleProject(3, scope.row)" />
           <el-button v-if="scope.row.project_type === 'ipa'" :disabled="scope.row.mLoading" type="info" size="small" icon="el-icon-picture" title="上传图标" circle @click="handleProject(4, scope.row)" />
         </template>
       </el-table-column>

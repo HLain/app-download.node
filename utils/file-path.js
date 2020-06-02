@@ -2,42 +2,43 @@ const path = require('path');
 const fs   = require('fs');
 
 const CodeError = require('./CodeError');
-const logger = require('./logger').getLogger('utils');
+const logger    = require('./logger').getLogger('utils');
+
+const { promisify }  = require('util');
+const readFileAsync  = promisify(fs.readFile.bind(fs));
+const writeFileAsync = promisify(fs.writeFile.bind(fs));
 
 // 以项目根目录为起始拼接路径
 function resolvePath(...args) {
   return path.resolve(__dirname, '..', ...args);
 }
 
-function readJsonFile(filePath) {
-  return new Promise(function(resolve, reject) {
-    fs.readFile(resolvePath('json', filePath), function(err, data) {
-      if (err) {
-        logger.error(`Read file ${path.resolve('json', filePath)} failed: ${err}`);
-        reject(CodeError.GetDataError);
-      } else {
-        resolve(JSON.parse(data.toString()));
-      }
-    });
-  });
+async function readJsonFile(filePath) {
+  try {
+    const data = await readFileAsync(resolvePath(filePath));
+
+    return JSON.parse(data.toString());
+  } catch (e) {
+    logger.error(`Read file ${filePath} failed: ${e}`);
+
+    throw CodeError.GET_DATA_ERROR;
+  }
 }
 
-function writeJsonFile(filePath, data) {
-  return new Promise(function(resolve, reject) {
-    data = JSON.stringify(data);
-    fs.writeFile(resolvePath('json', filePath), data, function(err) {
-      if (err) {
-        logger.error(`Save file ${path.resolve('json', filePath)} failed: ${err}`);
-        reject(CodeError);
-      } else {
-        resolve(data);
-      }
-    });
-  });
+async function writeJsonFile(filePath, data) {
+  try {
+    await writeFileAsync(resolvePath(filePath), JSON.stringify(data));
+  } catch (e) {
+    logger.error(`Save file ${filePath} failed: ${e}`);
+
+    throw CodeError.SET_DATA_ERROR;
+  }
 }
 
 module.exports = {
   resolvePath,
+  readFileAsync,
+  writeFileAsync,
   readJsonFile,
   writeJsonFile
 };

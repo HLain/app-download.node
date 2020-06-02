@@ -40,7 +40,7 @@ server.get('/adminn/*', function(req, res) {
 server.get('/apps/*.dn', function(req, res) {
   const dirpath = resolvePath('public', req.path.slice(1, -3));
 
-  fs.readFile(path.resolve(dirpath, 'list.txt'), function(err, data) {
+  fs.readFile(path.join(dirpath, 'app-list.json'), function(err, data) {
     if (err) {
       return void res
         .status(500)
@@ -48,9 +48,9 @@ server.get('/apps/*.dn', function(req, res) {
         .send('文件错误');
     }
 
-    const filename = /\n*([^\n]+)\s*$/.exec(data.toString());
-    if (filename) {
-      res.download(path.resolve(dirpath, filename[1].trim()));
+    const { list: appList } = JSON.parse(data.toString());
+    if (appList.length > 0) {
+      res.download(path.join(dirpath, appList[appList.length - 1].appFile));
     } else {
       res
         .status(503)

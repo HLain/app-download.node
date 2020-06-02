@@ -24,6 +24,8 @@ const logger        = require('./utils/logger').getLogger('admin');
 
 const {
   resolvePath,
+  readFileAsync,
+  writeFileAsync,
   readJsonFile,
   writeJsonFile
 } = require('./utils/file-path');
@@ -39,7 +41,8 @@ const upload = multer({
 
 const SESSION_KEY  = 'sessionid'; // 会话ID的cookie名称
 const APPS_FOLDER  = 'public/apps'; // 存储上传APP的目录
-const PROJECT_FILE = 'project-list.json'; // 项目列表存储文件
+const APPS_UPLOAD  = 'app-list.json'; // APP列表存储文件
+const PROJECT_FILE = 'json/project-list.json'; // 项目列表存储文件
 const EXPIRED_TIME = 7200000; // 2H: 2*60*60*1000
 
 function hashMd5(str) {
@@ -72,41 +75,38 @@ async function findProject(projectId) {
   return [data.list[index], index, data];
 }
 
-function buildProjectFile(fileName, projectPath, data) {
-  return new Promise(function(resolve, reject) {
-    // 获取模板文件并渲染
-    fs.readFile(resolvePath(`tmpl/${fileName}.ejs`), (err, file) => {
-      if (err) {
-        logger.error(`Read file tmpl/${fileName}.ejs failed: ${err}`);
+async function buildProjectFile(fileName, projectPath, data) {
+  const filePath = resolvePath(APPS_FOLDER, projectPath, fileName);
 
-        reject(CodeError.GET_DATA_ERROR);
-      } else {
-        resolve(template.render(file.toString(), data));
-      }
-    });
-  }).then(text => {
-    // 将生成文件保存到项目目录下
-    return new Promise(function(resolve, reject) {
-      const filePath = resolvePath(APPS_FOLDER, projectPath, fileName);
+  try {
+    const file = await readFileAsync(resolvePath(`tmpl/${fileName}.ejs`));
 
-      fs.writeFile(filePath, text, err => {
-        if (err) {
-          logger.error(`Write file ${filePath} failed: ${err}`);
+    await writeFileAsync(filePath, template.render(file.toString(), data));
 
-          reject(CodeError.SET_DATA_ERROR);
-        } else {
-          // 返回项目文件保存路径
-          resolve(filePath);
-        }
-      });
-    });
-  });
+    return filePath; // 返回项目文件保存路径
+  } catch (e) {
+    logger.error(`Write file ${filePath} failed: ${e}`);
+
+    throw CodeError.SET_DATA_ERROR;
+  }
 }
 function buildDescribePlist(projectPath, data) {
   return buildProjectFile('describe.plist', projectPath, data);
 }
 function buildIndexHtml(projectPath, data) {
   return buildProjectFile('index.html', projectPath, data);
+}
+
+function readAppList(projectPath) {
+  return readJsonFile(
+    resolvePath(APPS_FOLDER, projectPath, APPS_UPLOAD)
+  );
+}
+function writeAppList(projectPath, json) {
+  return writeJsonFile(
+    resolvePath(APPS_FOLDER, projectPath, APPS_UPLOAD),
+    json
+  );
 }
 
 // 获取管理账号
@@ -228,19 +228,17 @@ admin.get('/version/:project/:type', packAsyncHandler(async function(req, res,) 
   const params = req.params;
   const projectPath = params.project + params.type;
 
-  let [project, , data] = await findProject(0);
+  const appJson = await readAppList(projectPath);
+  const appLast = appJson.list[appJson.list.length - 1] || {};
 
-  if (project = data.list.find(project => project.path === projectPath)) {
-    sendSuccess(res, {
-      app_version: project.appVersion || '0',
-      download_uri: project.type === 'ipa'
-        ? `itms-services://?action=download-manifest&url=${req.app.locals.domain.name}/app/${projectPath}/describe.plist`
-        : `${req.app.locals.domain.name}/app/${projectPath}.dn`,
-      is_force: project.isForce || false
-    });
-  } else {
-    throw CodeError.DATA_NOT_FOUND;
-  }
+  sendSuccess(res, {
+    app_version: appLast.appVersion || '0',
+    download_uri: params.type === 'ipa'
+      ? `itms-services://?action=download-manifest&url=${req.app.locals.domain.name}/app/${projectPath}/describe.plist`
+      : `${req.app.locals.domain.name}/app/${projectPath}.dn`,
+    is_force: appLast.isForce || false,
+    update_logs: appLast.updateLogs
+  });
 }));
 
 admin.route('/project/list')
@@ -257,7 +255,7 @@ admin.route('/project/list')
           project_path: item.path,
           project_link: item.link || '',
           project_alisa: item.alisa || '',
-          app_version: item.appVersion || '',
+          // app_version: item.appVersion || '',
           app_identifier: item.appIdentifier || '',
           create_time: new Date(item.ctime * 1000).toUnified(),
           update_time: item.mtime ? new Date(item.mtime * 1000).toUnified() : ''
@@ -334,6 +332,12 @@ admin.route('/project/list')
 
     // 更新项目文件
     await writeJsonFile(PROJECT_FILE, data);
+    // 初始APP列表
+    await writeAppList(project.path, {
+      counter: 0,
+      list: [],
+      lose: []
+    });
 
     sendSuccess(res);
   }));
@@ -504,28 +508,19 @@ admin.route('/project/:pid/apps')
   // 项目APP列表
   .get(packAsyncHandler(async function(req, res) {
     const [project] = await findProject(+req.params.pid);
+    const { list } = await readAppList(project.path);
 
-    const appList = await new Promise(function(resolve, reject) {
-      const listFilePath = resolvePath(APPS_FOLDER, project.path, 'list.txt');
-
-      fs.readFile(listFilePath, function(err, data) {
-        if (err) {
-          logger.error(`Read file ${listFilePath} failed: ${err}`);
-
-          reject(CodeError.GET_DATA_ERROR);
-        } else {
-          resolve(
-            data
-              .toString()
-              .split('\n')
-              .map(line => line.trim())
-              .filter(line => line.length > 0)
-            );
-        }
-      });
+    sendSuccess(res, {
+      app_list: list.map(item => ({
+        id: item.id,
+        app_file: item.appFile,
+        app_version: item.appVersion,
+        app_identifier: item.appIdentifier,
+        update_logs: item.updateLogs,
+        is_force: item.isForce,
+        create_time: item.ctime
+      }))
     });
-
-    sendSuccess(res, { app_list: appList });
   }))
   // 上传项目APP
   .post(upload.single('file'), packAsyncHandler(async function(req, res) {
@@ -543,7 +538,7 @@ admin.route('/project/:pid/apps')
       );
     }
 
-    const [project, index, data] = await findProject(+req.params.pid);
+    const [project, _, projectJson] = await findProject(+req.params.pid);
     const projectPath = resolvePath(APPS_FOLDER, project.path);
     const appFileName = appFile.originalname.trim();
 
@@ -586,31 +581,29 @@ admin.route('/project/:pid/apps')
         );
     });
 
-    // 更新项目list.txt
-    await new Promise(function(resolve, reject) {
-      const listFilePath = path.resolve(projectPath, 'list.txt');
-
-      fs.appendFile(listFilePath, `\n${appFileName}`, function(err) {
-        if (err) {
-          logger.error(`Write file ${listFilePath} failed: ${err}`);
-
-          reject(CodeError.SET_DATA_ERROR);
-        } else {
-          resolve();
-        }
-      });
+    // 更新项目APP列表
+    const appJson = await readAppList(project.path);
+    appJson.list.push({
+      id: (appJson.counter += 1),
+      appFile: appFileName,
+      appVersion: params.app_version,
+      appIdentifier: params.app_identifier,
+      updateLogs: (params.update_logs || '')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0),
+      isForce: !!params.is_force && params.is_force !== 'false',
+      ctime: Math.floor(Date.now() / 1000)
     });
+    await writeAppList(project.path, appJson);
 
     // 更新项目列表
-    project.appVersion = params.app_version;
-    project.isForce = !!params.is_force && params.is_force !== 'false';
-    project.mtime = Math.floor(Date.now() / 1000);
-
+    project.mtime = appJson.list[appJson.list.length - 1].ctime;
     if (project.type === 'ipa') {
       project.appIdentifier = params.app_identifier;
     }
 
-    await writeJsonFile(PROJECT_FILE, data);
+    await writeJsonFile(PROJECT_FILE, projectJson);
 
     // iOS项目更新文件describe.plist
     if (project.type === 'ipa') {
@@ -627,47 +620,23 @@ admin.route('/project/:pid/apps')
   }));
 
 // 从项目APP列表中移除
-admin.delete('/project/:pid/apps/:idx', packAsyncHandler(async function(req, res) {
-  if (+req.params.idx < 0) {
+admin.delete('/project/:pid/apps/:id', packAsyncHandler(async function(req, res) {
+  const appId = +req.params.id;
+  if (!(appId >= 0)) {
     throw CodeError.BAD_PARAMETERS;
   }
 
   const [project] = await findProject(+req.params.pid);
-  const listFilePath = resolvePath(APPS_FOLDER, project.path, 'list.txt');
 
   // 获取项目APP列表
-  const appList = await new Promise(function(resolve, reject) {
-    fs.readFile(listFilePath, function(err, data) {
-      if (err) {
-        logger.error(`Read file ${listFilePath} failed: ${err}`);
-
-        reject(CodeError.GET_DATA_ERROR);
-      } else {
-        resolve(
-          data
-            .toString()
-            .split('\n')
-            .map(line => line.trim())
-            .filter(line => line.length > 0)
-        );
-      }
-    });
-  });
+  const appJson = await readAppList(project.path);
+  const delItem = appJson.list.findIndex(item => item.id === appId);
 
   // 从项目APP列表中删除
-  if (appList.splice(+req.params.idx, 1).length) {
-    await new Promise(function(resolve, reject) {
-      // 更新数据文件
-      fs.writeFile(listFilePath, appList.join('\n'), function(err) {
-        if (err) {
-          logger.log(`Write file ${listFilePath} failed: ${err}`);
+  if (delItem >= 0) {
+    appJson.lose.push(appJson.list.splice(delItem, 1)[0]);
 
-          reject(CodeError.SET_DATA_ERROR);
-        } else {
-          resolve();
-        }
-      });
-    });
+    await writeAppList(project.path, appJson);
   }
 
   sendSuccess(res);

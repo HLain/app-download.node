@@ -32,6 +32,13 @@
       <el-form-item v-if="data.project_type === 'ipa'" label="签名标识：" prop="app_identifier">
         <el-input v-model.trim="formData.app_identifier" type="text" placeholder="以点号[.]连接的英文字母和数字组合" />
       </el-form-item>
+      <el-form-item label="更新日志：" prop="update_logs">
+        <el-input
+          v-model.trim="formData.update_logs"
+          :rows="5"
+          type="textarea"
+          placeholder="说明：使用换行可插入多条记录" />
+      </el-form-item>
       <el-form-item label="强制更新：" prop="is_force">
         <el-radio-group v-model="formData.is_force">
           <el-radio :label="false">否</el-radio>
@@ -74,6 +81,7 @@ export default {
         project_path: od.project_path,
         app_version: '',
         app_identifier: od.app_identifier || '',
+        update_logs: '',
         is_force: false
       },
       formRules: {

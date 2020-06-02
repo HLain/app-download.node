@@ -7,8 +7,8 @@
         :key="index"
         class="lst-item el-upload-list__item">
         <p class="el-upload-list__item-name">
-          {{ app.name }}
-          <copy-button :text="`${downloadPath + data.project_path}/${app.name}`">复制下载地址</copy-button>
+          {{ app.app_file }}
+          <copy-button :text="`${downloadPath + data.project_path}/${app.app_file}`">复制下载地址</copy-button>
         </p>
         <i :class="{ 'el-icon-loading': app.mLoading }" class="el-icon-close" @click="handleRemove(app)" />
       </li>
@@ -48,7 +48,7 @@ export default {
     this.$mResponseHelper(
       getProjectApps(this.data.project_id),
       data => {
-        this.appList = data.app_list.map(appName => ({ name: appName }))
+        this.appList = data.app_list
       }
     ).finally(() => {
       this.isLoading = false
@@ -57,12 +57,12 @@ export default {
 
   methods: {
     handleRemove (info) {
-      this.$confirm(`确定从列表中移除【${info.name}】吗？`).then(() => {
+      this.$confirm(`确定从列表中移除【${info.app_file}】吗？`).then(() => {
         const list = this.appList
         info.mLoading = true
         this.$set(list, list.indexOf(info), info)
         this.$mResponseHelper(
-          delProjectApps(this.data.project_id, list.indexOf(info)),
+          delProjectApps(this.data.project_id, info.id),
           () => {
             this.$message.success('删除成功')
 
