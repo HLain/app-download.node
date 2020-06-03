@@ -237,7 +237,7 @@ admin.get('/version/:project/:type', packAsyncHandler(async function(req, res,) 
       ? `itms-services://?action=download-manifest&url=${req.app.locals.domain.name}/app/${projectPath}/describe.plist`
       : `${req.app.locals.domain.name}/app/${projectPath}.dn`,
     is_force: appLast.isForce || false,
-    update_logs: appLast.updateLogs
+    update_logs: appLast.updateLogs || []
   });
 }));
 
@@ -447,7 +447,7 @@ admin.post(
         if (err) {
           logger.error(`Read image ${req.file.path} failed: ${err}`);
 
-          reject(CodeError.GET_DATA_ERROR);
+          reject(new CodeError(12010, '图片读取错误'));
         } else {
           if (size.width !== 512 || size.height !== 512) {
             reject(new CodeError(12000, '图片尺寸错误'));

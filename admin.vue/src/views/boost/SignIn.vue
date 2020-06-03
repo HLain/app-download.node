@@ -1,7 +1,7 @@
 <template>
   <div class="container">
     <el-card>
-      <h4 slot="header" class="align-c">后台管理系统</h4>
+      <h4 slot="header" class="align-c">{{ pageTitle }}</h4>
       <el-form :model="formData" :rules="formRules" ref="loginForm" @submit.native.prevent="handleSubmit">
         <el-form-item prop="username">
           <el-input v-model.trim="formData.username" type="text" placeholder="账号">
@@ -27,6 +27,8 @@ export default {
 
   data () {
     return {
+      pageTitle: document.title || '后台管理系统',
+
       isSubmitting: false,
       formData: {
         username: '',
