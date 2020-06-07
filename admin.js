@@ -8,12 +8,11 @@ const os            = require('os');
  * 如果列表中如果显示PNG、JPEG、GIF等则表示已支持图片转换
  */
 const gm            = require('gm');
-const crypto        = require('crypto');
 const uuidv5        = require('uuid/v5');
+const { promisify } = require('util');
 const cookieParser  = require('cookie-parser');
 const bodyParser    = require('body-parser');
 const multer        = require('multer');
-const template      = require('art-template');
 
 const express       = require('express');
 const admin         = express();
@@ -24,90 +23,33 @@ const logger        = require('./utils/logger').getLogger('admin');
 
 const {
   resolvePath,
-  readFileAsync,
-  writeFileAsync,
-  readJsonFile,
-  writeJsonFile
+  findProject,
+  saveProject,
+  gainAppList,
+  saveAppList,
+  buildIndexHtml,
+  buildDescribePlist
 } = require('./utils/file-path');
+
+const {
+  hashMd5,
+  packAsyncHandler,
+  sendJsonSuccess
+} = require('./utils/toolkit');
 
 require('./utils/js-extend');
 
-const upload = multer({
+const SESSION_KEY  = 'sessionid'; // 会话ID的cookie名称
+const APPS_FOLDER  = 'public/apps'; // 存储上传APP的目录
+const EXPIRED_TIME = 7200000; // 2H: 2*60*60*1000
+
+// 文件上传处理器
+const uploadHandler = multer({
   dest: os.tmpdir(),
   limits: {
     fileSize: 104857600 // 100MB: 100*1024*1024
   }
 });
-
-const SESSION_KEY  = 'sessionid'; // 会话ID的cookie名称
-const APPS_FOLDER  = 'public/apps'; // 存储上传APP的目录
-const APPS_UPLOAD  = 'app-list.json'; // APP列表存储文件
-const PROJECT_FILE = 'json/project-list.json'; // 项目列表存储文件
-const EXPIRED_TIME = 7200000; // 2H: 2*60*60*1000
-
-function hashMd5(str) {
-  return crypto.createHash('md5').update(str).digest('hex');
-}
-
-function sendSuccess(res, data, message = 'success') {
-  res.json({
-    code: 10000,
-    msg: message,
-    data
-  });
-}
-function packAsyncHandler(middleware) {
-  return function(req, res, next) {
-    middleware(req, res).catch(next);
-  }
-}
-
-// projectId为0，则返回整个项目列表
-async function findProject(projectId) {
-  const data = await readJsonFile(PROJECT_FILE);
-
-  if (projectId <= 0) return [null, -1, data];
-
-  const index = data.list.findIndex(item => item.id === projectId);
-
-  if (index === -1) throw CodeError.DATA_NOT_FOUND;
-
-  return [data.list[index], index, data];
-}
-
-async function buildProjectFile(fileName, projectPath, data) {
-  const filePath = resolvePath(APPS_FOLDER, projectPath, fileName);
-
-  try {
-    const file = await readFileAsync(resolvePath(`tmpl/${fileName}.ejs`));
-
-    await writeFileAsync(filePath, template.render(file.toString(), data));
-
-    return filePath; // 返回项目文件保存路径
-  } catch (e) {
-    logger.error(`Write file ${filePath} failed: ${e}`);
-
-    throw CodeError.SET_DATA_ERROR;
-  }
-}
-function buildDescribePlist(projectPath, data) {
-  return buildProjectFile('describe.plist', projectPath, data);
-}
-function buildIndexHtml(projectPath, data) {
-  return buildProjectFile('index.html', projectPath, data);
-}
-
-function readAppList(projectPath) {
-  return readJsonFile(
-    resolvePath(APPS_FOLDER, projectPath, APPS_UPLOAD)
-  );
-}
-function writeAppList(projectPath, json) {
-  return writeJsonFile(
-    resolvePath(APPS_FOLDER, projectPath, APPS_UPLOAD),
-    json
-  );
-}
 
 // 获取管理账号
 {
@@ -136,9 +78,7 @@ const whiteRoutes = [
 
 // 权限验证
 admin.all('*', function(req, res, next) {
-  if (whiteRoutes.includes(/^\/[^\/]*/.exec(req.path)[0])) {
-    next();
-  } else {
+  if (!whiteRoutes.includes(/^\/[^\/]*/.exec(req.path)[0])) {
     const cookieToken = req.cookies[SESSION_KEY];
     const accessToken = req.get('Authorization');
     const adminAuth = req.app.locals.user || {};
@@ -158,22 +98,20 @@ admin.all('*', function(req, res, next) {
 
       throw new CodeError(10106, '授权过期');
     }
-    else {
-      // 剩余时效小于1小时，则再延长2小时
-      if (adminAuth.timestamp - Date.now() < 3600000) {
-        adminAuth.timestamp = Date.now() + EXPIRED_TIME;
+    // 剩余时效小于1小时，则再延长2小时
+    else if (adminAuth.timestamp - Date.now() < 3600000) {
+      adminAuth.timestamp = Date.now() + EXPIRED_TIME;
 
-        res.cookie(SESSION_KEY, adminAuth.name, {
-          domain: req.hostname,
-          path: req.app.mountpath,
-          httpOnly: true,
-          maxAge: EXPIRED_TIME
-        });
-      }
-
-      next();
+      res.cookie(SESSION_KEY, adminAuth.name, {
+        domain: req.hostname,
+        path: req.app.mountpath,
+        httpOnly: true,
+        maxAge: EXPIRED_TIME
+      });
     }
   }
+
+  next();
 });
 
 // 登录
@@ -204,7 +142,7 @@ admin.post('/login/signin', function(req, res) {
     maxAge: EXPIRED_TIME
   });
 
-  sendSuccess(res, {
+  sendJsonSuccess(res, {
     user_id: store.auth.userid,
     token: accessToken,
     expire: EXPIRED_TIME / 1000
@@ -220,7 +158,7 @@ admin.delete('/user/logout', function(req, res) {
     path: req.app.mountpath
   });
 
-  sendSuccess(res, null, '退出成功');
+  sendJsonSuccess(res, null, '退出成功');
 });
 
 // app版本更新检测
@@ -228,10 +166,10 @@ admin.get('/version/:project/:type', packAsyncHandler(async function(req, res,) 
   const params = req.params;
   const projectPath = params.project + params.type;
 
-  const appJson = await readAppList(projectPath);
-  const appLast = appJson.list[appJson.list.length - 1] || {};
+  const { list: appList } = await gainAppList(projectPath);
+  const appLast = appList[appList.length - 1] || {};
 
-  sendSuccess(res, {
+  sendJsonSuccess(res, {
     app_version: appLast.appVersion || '0',
     download_uri: params.type === 'ipa'
       ? `itms-services://?action=download-manifest&url=${req.app.locals.domain.name}/app/${projectPath}/describe.plist`
@@ -246,7 +184,7 @@ admin.route('/project/list')
   .get(packAsyncHandler(async function(req, res) {
     const [, , { list }] = await findProject(0);
     
-    sendSuccess(res, {
+    sendJsonSuccess(res, {
       project_list: list.map(item => {
         return {
           project_id: item.id,
@@ -292,25 +230,19 @@ admin.route('/project/list')
       params.project_path += params.project_type;
     }
 
-    await new Promise(function(resolve, reject) {
-      const projectPath = resolvePath(APPS_FOLDER, params.project_path);
+    const projectPath = resolvePath(APPS_FOLDER, params.project_path);
+    try {
+      await promisify(fs.mkdir.bind(fs))(projectPath);
+    } catch (e) {
+      logger.error(`Create folder ${projectPath} failed: ${e}`);
 
-      // 新建项目目录
-      fs.mkdir(projectPath, function(err) {
-        if (err) {
-          logger.error(`Create folder ${projectPath} failed: ${err}`);
+      throw CodeError.SET_DATA_ERROR;
+    }
 
-          reject(CodeError.SET_DATA_ERROR);
-        } else {
-          resolve();
-        }
-      });
-    });
-
-    const [, , data] = await findProject(0);
+    const [, , projectJson] = await findProject(0);
     // 项目信息
     const project = {
-      id: data.counter += 1,
+      id: (projectJson.counter += 1),
       name: params.project_name,
       type: params.project_type,
       path: params.project_path,
@@ -319,8 +251,7 @@ admin.route('/project/list')
       ctime: Math.floor(Date.now() / 1000),
       mtime: null
     };
-
-    data.list.push(project);
+    projectJson.list.push(project);
 
     // iOS项目更新index.html
     if (project.type === 'ipa') {
@@ -331,15 +262,15 @@ admin.route('/project/list')
     }
 
     // 更新项目文件
-    await writeJsonFile(PROJECT_FILE, data);
+    await saveProject(projectJson);
     // 初始APP列表
-    await writeAppList(project.path, {
+    await saveAppList(project.path, {
       counter: 0,
       list: [],
       lose: []
     });
 
-    sendSuccess(res);
+    sendJsonSuccess(res);
   }));
 
 admin.route('/project/list/:id')
@@ -351,7 +282,7 @@ admin.route('/project/list/:id')
       throw CodeError.BAD_PARAMETERS;
     }
 
-    const [project, index, data] = await findProject(+req.params.id);
+    const [project, , projectJson] = await findProject(+req.params.id);
     // project.name = params.project_name;
     project.link = params.project_link;
     project.alisa = params.project_alisa;
@@ -369,40 +300,35 @@ admin.route('/project/list/:id')
     }
 
     // 更新项目文件
-    await writeJsonFile(PROJECT_FILE, data);
+    await saveProject(projectJson);
 
-    sendSuccess(res);
+    sendJsonSuccess(res);
   }))
   // 删除项目
   .delete(packAsyncHandler(async function(req, res) {
-    const [project, index, data] = await findProject(+req.params.id);
+    const [project, index, projectJson] = await findProject(+req.params.id);
 
-    await new Promise(function(resolve, reject) {
-      const projectPath = resolvePath(APPS_FOLDER, project.path);
-
-      // 重命名项目文件夹为<[project_path].del>
-      fs.rename(
+    const projectPath = resolvePath(APPS_FOLDER, project.path);
+    try {
+      await promisify(fs.rename.bind(fs))(
         projectPath,
-        resolvePath(APPS_FOLDER, `${project.path}.del`),
-        function(err) {
-          if (err) {
-            logger.error(`Rename folder ${projectPath} failed: ${err}`);
-
-            reject(CodeError.SET_DATA_ERROR);
-          } else {
-            resolve();
-          }
-        }
+        resolvePath(APPS_FOLDER, `${project.path}.del`)
       );
-    });
+    } catch (e) {
+      logger.error(`Rename folder ${projectPath} failed: ${e}`);
+
+      throw CodeError.SET_DATA_ERROR;
+    }
         
     // 从项目列表中删除
-    data.list.splice(index, 1);
-    data.lose.push(project);
+    projectJson.list.splice(index, 1);
+    projectJson.lose.push(project);
     // 更新项目文件
-    await writeJsonFile(PROJECT_FILE, data);
+    await saveProject(projectJson);
+    // 清除APP列表缓存
+    await saveAppList(project.path, null);
           
-    sendSuccess(res);
+    sendJsonSuccess(res);
   }));
 
 // 项目排序
@@ -413,10 +339,10 @@ admin.post('/project/sort', packAsyncHandler(async function(req, res) {
     throw CodeError.BAD_PARAMETERS;
   }
 
-  const [, , data] = await findProject(0);
+  const [, , projectJson] = await findProject(0);
   const newList = new Array(idxs.length);
 
-  data.list.forEach(project => {
+  projectJson.list.forEach(project => {
     const index = idxs.indexOf(project.id);
 
     if (index > -1) {
@@ -426,80 +352,60 @@ admin.post('/project/sort', packAsyncHandler(async function(req, res) {
     }
   });
   // 参数id_list中可能有无效ID，清除空位
-  data.list = newList.filter(project => !!project);
+  projectJson.list = newList.filter(item => !!item);
 
   // 更新数据文件
-  await writeJsonFile(PROJECT_FILE, data);
+  await saveProject(projectJson);
 
-  sendSuccess(res);
+  sendJsonSuccess(res);
 }));
 
 // 项目ICON
 admin.post(
   '/project/:pid/icon',
-  upload.single('image'),
+  uploadHandler.single('image'),
   packAsyncHandler(async function(req, res) {
     const gmObj = gm(req.file.path);
 
     // 检测图片是否符合要求
-    await new Promise(function(resolve, reject) {
-      gmObj.size((err, size) => {
-        if (err) {
-          logger.error(`Read image ${req.file.path} failed: ${err}`);
+    try {
+      const imgSize = await promisify(gmObj.size.bind(gmObj))();
 
-          reject(new CodeError(12010, '图片读取错误'));
-        } else {
-          if (size.width !== 512 || size.height !== 512) {
-            reject(new CodeError(12000, '图片尺寸错误'));
-          } else {
-            resolve(gmObj);
-          }
-        }
-      });
-    });
+      if (imgSize.width !== 512 || imgSize.height !== 512) {
+        throw new CodeError(12000, '图片尺寸错误');
+      }
+    } catch (e) {
+      logger.error(`Read image ${req.file.path} failed: ${e}`);
+
+      throw new CodeError(12010, '图片读取错误');
+    }
 
     const [project] = await findProject(+req.params.pid);
-    const projectPath = resolvePath(APPS_FOLDER, project.path);
 
-    // 存储图标：icon-512.png
-    await new Promise(function(resolve, reject) {
-      const iconFilePath = path.resolve(projectPath, 'icon512.png');
+    try {
+      const projectPath = resolvePath(APPS_FOLDER, project.path);
+      // 存储图标：icon-512.png
+      await promisify(gmObj.write.bind(gmObj))(
+        path.join(projectPath, 'icon512.png')
+      );
+      // 存储图标：icon-180|120|57.png
+      for (const size of [180, 120, 57]) {
+        await promisify(gmObj.write.bind(gmObj.resize(size)))(
+          path.join(projectPath, `icon${size}.png`)
+        );
+      }
+    } catch (e) {
+      logger.error(`Write image ${project.path}/icon-x.png failed: ${e}`);
 
-      gmObj.write(iconFilePath, err => {
-        if (err) {
-          logger.error(`Write image ${iconFilePath} failed: ${err}`);
-
-          reject(CodeError.SET_DATA_ERROR);
-        } else {
-          resolve();
-        }
-      });
-    });
-    // 存储图标：icon-180|120|57.png
-    for (let size of [180, 120, 57]) {
-      await new Promise(function(resolve, reject) {
-        const iconFilePath = path.resolve(projectPath, `icon${size}.png`);
-
-        gmObj.resize(size).write(iconFilePath, err => {
-          if (err) {
-            logger.error(`Write image ${iconFilePath} failed: ${err}`);
-
-            reject(CodeError.SET_DATA_ERROR);
-          } else {
-            resolve();
-          }
-        });
-      });
+      throw CodeError.SET_DATA_ERROR;
     }
 
     // 删除临时文件
-    fs.unlink(req.file.path, err => {
-      if (err) {
-        logger.warn(`Remove file ${req.file.path} failed: ${err}`);
-      }
+    promisify(fs.unlink.bind(fs))(req.file.path).catch(err => {
+      logger.warn(`Remove file ${req.file.path} failed: ${err}`);
     });
 
-    sendSuccess(res);
+    sendJsonSuccess(res);
   })
 );
 
@@ -508,9 +414,9 @@ admin.route('/project/:pid/apps')
   // 项目APP列表
   .get(packAsyncHandler(async function(req, res) {
     const [project] = await findProject(+req.params.pid);
-    const { list } = await readAppList(project.path);
+    const { list } = await gainAppList(project.path);
 
-    sendSuccess(res, {
+    sendJsonSuccess(res, {
       app_list: list.map(item => ({
         id: item.id,
         app_file: item.appFile,
@@ -518,51 +424,51 @@ admin.route('/project/:pid/apps')
         app_identifier: item.appIdentifier,
         update_logs: item.updateLogs,
         is_force: item.isForce,
-        create_time: item.ctime
+        create_time: new Date(item.ctime * 1000).toUnified()
       }))
     });
   }))
   // 上传项目APP
-  .post(upload.single('file'), packAsyncHandler(async function(req, res) {
+  .post(uploadHandler.single('file'), packAsyncHandler(async function(req, res) {
     const params = req.body;
     const appFile = req.file;
 
     if (!params.app_version) {
       throw CodeError.BAD_PARAMETERS;
     }
+    // 文件名不能以.开始且不包含分隔符\和/
     else if (/^\.|[\/\\]/.test(appFile.originalname)) {
-      // 文件名不能以.开始且不包含分隔符\和/
       throw new CodeError(
         CodeError.BAD_PARAMETERS.code,
         '文件名包含非法字符'
       );
     }
 
-    const [project, _, projectJson] = await findProject(+req.params.pid);
-    const projectPath = resolvePath(APPS_FOLDER, project.path);
-    const appFileName = appFile.originalname.trim();
+    const [project, , projectJson] = await findProject(+req.params.pid);
 
-    if (project.type === 'ipa' && !params.app_identifier) {
+    const isIosProject = project.type === 'ipa';
+    if (isIosProject && !params.app_identifier) {
       throw CodeError.BAD_PARAMETERS;
     }
 
+    const projectPath = resolvePath(APPS_FOLDER, project.path);
+    const appFileName = appFile.originalname.trim();
+
     // 转存APP文件到项目目录
     await new Promise(function(resolve, reject) {
-      const targetPath = path.resolve(projectPath, appFileName);
+      const targetPath = path.join(projectPath, appFileName);
 
       fs
         .createReadStream(appFile.path)
         .on('error', err => {
-          logger.error(`Save file ${appFile.path} failed: ${err}`);
+          logger.error(`Read file ${appFile.path} failed: ${err}`);
 
           reject(CodeError.SET_DATA_ERROR);
         })
         .on('end', () => {
           // 删除临时文件
-          fs.unlink(appFile.path, err => {
-            if (err) {
-              logger.warn(`Remove file ${appFile.path} failed: ${err}`);
-            }
+          promisify(fs.unlink.bind(fs))(appFile.path).catch(err => {
+            logger.warn(`Remove file ${appFile.path} failed: ${err}`);
           });
         })
         .pipe(
@@ -582,7 +488,7 @@ admin.route('/project/:pid/apps')
     });
 
     // 更新项目APP列表
-    const appJson = await readAppList(project.path);
+    const appJson = await gainAppList(project.path);
     appJson.list.push({
       id: (appJson.counter += 1),
       appFile: appFileName,
@@ -595,18 +501,16 @@ admin.route('/project/:pid/apps')
       isForce: !!params.is_force && params.is_force !== 'false',
       ctime: Math.floor(Date.now() / 1000)
     });
-    await writeAppList(project.path, appJson);
+    await saveAppList(project.path, appJson);
 
     // 更新项目列表
     project.mtime = appJson.list[appJson.list.length - 1].ctime;
-    if (project.type === 'ipa') {
-      project.appIdentifier = params.app_identifier;
-    }
+    project.appIdentifier = params.app_identifier;
 
-    await writeJsonFile(PROJECT_FILE, projectJson);
+    await saveProject(projectJson);
 
     // iOS项目更新文件describe.plist
-    if (project.type === 'ipa') {
+    if (isIosProject) {
       await buildDescribePlist(project.path, {
         projectName: project.name,
         downloadPath: `${req.app.locals.domain.name}/app/${project.path}/`,
@@ -616,7 +520,7 @@ admin.route('/project/:pid/apps')
       });
     }
 
-    sendSuccess(res);
+    sendJsonSuccess(res);
   }));
 
 // 从项目APP列表中移除
@@ -629,17 +533,17 @@ admin.delete('/project/:pid/apps/:id', packAsyncHandler(async function(req, res)
   const [project] = await findProject(+req.params.pid);
 
   // 获取项目APP列表
-  const appJson = await readAppList(project.path);
+  const appJson = await gainAppList(project.path);
   const delItem = appJson.list.findIndex(item => item.id === appId);
 
   // 从项目APP列表中删除
   if (delItem >= 0) {
     appJson.lose.push(appJson.list.splice(delItem, 1)[0]);
 
-    await writeAppList(project.path, appJson);
+    await saveAppList(project.path, appJson);
   }
 
-  sendSuccess(res);
+  sendJsonSuccess(res);
 }));
 
 // 错误处理
@@ -651,7 +555,7 @@ admin.use(function(err, req, res, next) {
 
   res.json({
     code: err.code || 10500,
-    msg: err.message || err.toString()
+    emsg: err.message || err.toString()
   });
 });
 

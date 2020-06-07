@@ -37,7 +37,7 @@ const user = {
     // 登录
     SignIn ({ commit }, formData) {
       return signin(formData).then(json => {
-        if (json.code === 10000) {
+        if (json.code === process.env.SUCCESS_CODE) {
           const userInfo = json.data
           commit('SAVE', {
             accessToken: userInfo.token,
@@ -55,8 +55,8 @@ const user = {
         commit('CLEAR')
 
         return {
-          code: 10000,
-          msg: 'success'
+          code: process.env.SUCCESS_CODE,
+          emsg: 'success'
         }
       })
     },
@@ -66,8 +66,8 @@ const user = {
       commit('CLEAR')
 
       return Promise.resolve({
-        code: 10000,
-        msg: 'success'
+        code: process.env.SUCCESS_CODE,
+        emsg: 'success'
       })
     }
   }

@@ -112,13 +112,13 @@ export default {
         this.$message.info('请选择上传文件')
       }
     },
-    handleUploaded (json) {
+    handleUploaded (ret) {
       this.isSubmitting = false
-      if (+json.code === 10000) {
+      if (+ret.code === process.env.SUCCESS_CODE) {
         this.$message.success('上传成功')
         this.$emit('notify', this.formData)
       } else {
-        this.$message.error(json.msg || `上传失败：Request ${json.status}`)
+        this.$message.error(ret.emsg || `上传失败：${ret}`)
       }
     },
     handleChange (file, list) {

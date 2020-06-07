@@ -8,7 +8,7 @@
         class="lst-item el-upload-list__item">
         <p class="el-upload-list__item-name">
           {{ app.app_file }}
-          <copy-button :text="`${downloadPath + data.project_path}/${app.app_file}`">复制下载地址</copy-button>
+          <copy-button :text="`${downloadPath + data.project_path}/${app.app_file}`">复制</copy-button>
         </p>
         <i :class="{ 'el-icon-loading': app.mLoading }" class="el-icon-close" @click="handleRemove(app)" />
       </li>

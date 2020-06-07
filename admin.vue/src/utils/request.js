@@ -48,10 +48,10 @@ export default service
  */
 export function responseHelper (apiPromise, handleMap) {
   if (typeof handleMap === 'function') {
-    handleMap = { 10000: handleMap }
+    handleMap = { [process.env.SUCCESS_CODE]: handleMap }
   }
   return apiPromise
-    .then(({ code, msg, data }) => {
+    .then(({ code, emsg, data }) => {
       if ([10105, 10106].includes(code)) {
         // 10105-用户未登录 10106-登录凭证失效
         MessageBox.alert(
@@ -63,8 +63,8 @@ export function responseHelper (apiPromise, handleMap) {
         })
       } else if (handleMap[code]) {
         handleMap[code](data)
-      } else if (code !== 10000) {
-        Message.error(msg)
+      } else if (code !== process.env.SUCCESS_CODE) {
+        Message.error(emsg)
       }
     })
     .catch(reason => {

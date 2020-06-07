@@ -1,6 +1,3 @@
-const path     = require('path');
-const fs       = require('fs');
-
 const express  = require('express');
 const rewrite  = require('express-urlrewrite');
 const server   = express();
@@ -9,7 +6,8 @@ const admin    = require('./admin');
 const logger   = require('./utils/logger');
 
 const {
-  resolvePath
+  resolvePath,
+  gainAppList
 } = require('./utils/file-path');
 
 server.use(
@@ -27,43 +25,53 @@ server.use(rewrite('/app/*', '/apps/$1'));
 
 server.use(express.static(resolvePath('public')));
 
+server.get('/adminn/*', function(req, res, next) {
+  // adminn目录下的文件已经被public的static插件发送！
+  const fileName = req.path.slice(req.path.lastIndexOf('/'));
+
+  if (!fileName.includes('.')) { // fileName.endsWith('.html')
+    res.sendFile(resolvePath('public/adminn/index.html'));
+    // fs.createReadStream(resolvePath('public/adminn/index.html'))
+    //   .pipe(res.set('Content-Type', 'text/html'));
+  } else {
+    next();
+  }
+});
+
 // 后台接口服务
 server.use('/admin', admin);
 
-server.get('/adminn/*', function(req, res) {
-  // adminn目录下的文件已经被public的static插件发送！
-  fs.createReadStream(resolvePath('public/adminn/index.html'))
-    .pipe(res.set('Content-Type', 'text/html'));
-});
-
 // download-url: /app/path.dn
-server.get('/apps/*.dn', function(req, res) {
-  const dirpath = resolvePath('public', req.path.slice(1, -3));
+server.get('/apps/*.dn', async function(req, res) {
+  try {
+    const { list: appList } = await gainAppList(req.path.slice(6, -3));
 
-  fs.readFile(path.join(dirpath, 'app-list.json'), function(err, data) {
-    if (err) {
-      return void res
-        .status(500)
-        .set('Content-Type', 'text/plain')
-        .send('文件错误');
-    }
-
-    const { list: appList } = JSON.parse(data.toString());
     if (appList.length > 0) {
-      res.download(path.join(dirpath, appList[appList.length - 1].appFile));
+      res.download(
+        resolvePath(
+          'public',
+          req.path.slice(1, -3),
+          appList[appList.length - 1].appFile
+        )
+      );
     } else {
       res
         .status(503)
         .set('Content-Type', 'text/plain')
         .send('未找到文件');
     }
-  });
+  } catch (e) {
+    res
+      .status(500)
+      .set('Content-Type', 'text/plain')
+      .send('文件错误');
+  }
 });
 
 server.all('*', function(req, res) {
-  fs.createReadStream(resolvePath('public/404.html'))
-    .pipe(res.status(404).set('Content-Type', 'text/html'));
-  // res.sendFile(resolvePath('public/404.html'));
+  res.status(404).sendFile(resolvePath('public/404.html'));
+  // fs.createReadStream(resolvePath('public/404.html'))
+  //   .pipe(res.status(404).set('Content-Type', 'text/html'));
 });
 
 server.listen(8060, function() {

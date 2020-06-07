@@ -11,7 +11,7 @@ log4js.configure({
     },
     admin: {
       type: 'dateFile',
-      filename: path.resolve(__dirname, '../logs/admin/notes'),
+      filename: path.resolve(__dirname, '../logs/admin'),
       pattern: 'yyyyMMdd.log',
       alwaysIncludePattern: true
     }

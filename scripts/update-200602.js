@@ -15,7 +15,7 @@ const {
 const APPS_UPLOAD  = 'app-list.json';
 const PROJECT_FILE = 'json/project-list.json';
 
-function writeAppList(folder, apath, data) {
+function saveAppList(folder, apath, data) {
   console.log(`Write file: ${path.join(folder, apath, APPS_UPLOAD)}`);
   return writeJsonFile(resolvePath(folder, apath, APPS_UPLOAD), data);
 }
@@ -30,7 +30,7 @@ function writeAppList(folder, apath, data) {
 
     if (!fs.existsSync(listFilePath)) {
       if (fs.statSync(resolvePath(appsFolder, projectPath)).isDirectory()) {
-        await writeAppList(appsFolder, projectPath, {
+        await saveAppList(appsFolder, projectPath, {
           counter: 0,
           list: [],
           lose: []
@@ -76,7 +76,7 @@ function writeAppList(folder, apath, data) {
       }
     }
 
-    await writeAppList(appsFolder, projectPath, appJson);
+    await saveAppList(appsFolder, projectPath, appJson);
     await unlinkAsync(listFilePath);
   }
 

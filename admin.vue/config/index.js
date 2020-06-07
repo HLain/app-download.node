@@ -14,6 +14,14 @@ module.exports = {
       '/admin': {
         target: 'http://localhost:8060',
         changeOrigin: true
+      },
+      '/app': {
+        target: 'http://localhost:8060',
+        changeOrigin: true
+      },
+      '/version': {
+        target: 'http://localhost:8060',
+        changeOrigin: true
       }
     },
 
