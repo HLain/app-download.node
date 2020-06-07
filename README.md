@@ -1,4 +1,4 @@
-# app-download.node
+# node-app-download
 APP Download Server in NodeJS
 
 # Installation
