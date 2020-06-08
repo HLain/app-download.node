@@ -21,7 +21,7 @@ server.use(
 // });
 server.use(rewrite('/version/*', '/admin/version/$1'));
 
-server.use(rewrite('/app/*', '/apps/$1'));
+server.use(rewrite('/app/*', '/apps/$1')); // 兼容原有项目
 
 server.use(express.static(resolvePath('public')));
 
@@ -41,7 +41,7 @@ server.get('/adminn/*', function(req, res, next) {
 // 后台接口服务
 server.use('/admin', admin);
 
-// download-url: /app/path.dn
+// download-url: /apps/path.dn
 server.get('/apps/*.dn', async function(req, res) {
   try {
     const { list: appList } = await gainAppList(req.path.slice(6, -3));

@@ -15,7 +15,7 @@ module.exports = {
         target: 'http://localhost:8060',
         changeOrigin: true
       },
-      '/app': {
+      '/apps': {
         target: 'http://localhost:8060',
         changeOrigin: true
       },

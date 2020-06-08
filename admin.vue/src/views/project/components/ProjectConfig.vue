@@ -104,7 +104,7 @@ export default {
   computed: {
     downloadAddress () {
       const formData = this.formData
-      const downloadPath = `${location.protocol}//${location.host}/app/${formData.project_path || '[path]'}`
+      const downloadPath = `${location.protocol}//${location.host}/apps/${formData.project_path || '[path]'}`
       return formData.project_type !== 'ipa'
         ? `${downloadPath}.dn`
         : `itms-services://?action=download-manifest&url=${downloadPath}/describe.plist`

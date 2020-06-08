@@ -162,7 +162,7 @@ admin.delete('/user/logout', function(req, res) {
 });
 
 // app版本更新检测
-admin.get('/version/:project/:type', packAsyncHandler(async function(req, res,) {
+admin.get('/version/:project/:type', packAsyncHandler(async function(req, res) {
   const params = req.params;
   const projectPath = params.project + params.type;
 
@@ -172,8 +172,8 @@ admin.get('/version/:project/:type', packAsyncHandler(async function(req, res,) 
   sendJsonSuccess(res, {
     app_version: appLast.appVersion || '0',
     download_uri: params.type === 'ipa'
-      ? `itms-services://?action=download-manifest&url=${req.app.locals.domain.name}/app/${projectPath}/describe.plist`
-      : `${req.app.locals.domain.name}/app/${projectPath}.dn`,
+      ? `itms-services://?action=download-manifest&url=${req.app.locals.domain.name}/apps/${projectPath}/describe.plist`
+      : `${req.app.locals.domain.name}/apps/${projectPath}.dn`,
     is_force: appLast.isForce || false,
     update_logs: appLast.updateLogs || []
   });
@@ -202,7 +202,7 @@ admin.route('/project/list')
     });
   }))
   // 新增项目
-  .post(packAsyncHandler(async function(req, res,) {
+  .post(packAsyncHandler(async function(req, res) {
     const params = req.body;
 
     if (
@@ -257,7 +257,7 @@ admin.route('/project/list')
     if (project.type === 'ipa') {
       buildIndexHtml(project.path, {
         projectName: project.name,
-        downloadPath: `${req.app.locals.domain.name}/app/${project.path}/`
+        downloadPath: `${req.app.locals.domain.name}/apps/${project.path}/`
       });
     }
 
@@ -294,7 +294,7 @@ admin.route('/project/list/:id')
       if (project.type === 'ipa') {
         buildIndexHtml(project.path, {
           projectName: project.name,
-          downloadPath: `${req.app.locals.domain.name}/app/${project.path}/`
+          downloadPath: `${req.app.locals.domain.name}/apps/${project.path}/`
         });
       }
     }
@@ -451,12 +451,11 @@ admin.route('/project/:pid/apps')
       throw CodeError.BAD_PARAMETERS;
     }
 
-    const projectPath = resolvePath(APPS_FOLDER, project.path);
     const appFileName = appFile.originalname.trim();
 
     // 转存APP文件到项目目录
     await new Promise(function(resolve, reject) {
-      const targetPath = path.join(projectPath, appFileName);
+      const targetPath = resolvePath(APPS_FOLDER, project.path, appFileName);
 
       fs
         .createReadStream(appFile.path)
@@ -513,7 +512,7 @@ admin.route('/project/:pid/apps')
     if (isIosProject) {
       await buildDescribePlist(project.path, {
         projectName: project.name,
-        downloadPath: `${req.app.locals.domain.name}/app/${project.path}/`,
+        downloadPath: `${req.app.locals.domain.name}/apps/${project.path}/`,
         appName: appFileName,
         appVersion: params.app_version,
         appIdentifier: params.app_identifier

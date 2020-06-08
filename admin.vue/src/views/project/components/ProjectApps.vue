@@ -40,7 +40,7 @@ export default {
       isLoading: true,
       appList: null,
 
-      downloadPath: `${location.protocol}//${location.host}/app/`
+      downloadPath: `${location.protocol}//${location.host}/apps/`
     }
   },
 

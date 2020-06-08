@@ -61,7 +61,7 @@ export default {
 
       imageFileUrl: null,
       uploadPath: process.env.API_HOST + `project/${this.data.project_id}/icon`,
-      projectPath: `${location.protocol}//${location.host}/app/${this.data.project_path}/`
+      projectPath: `${location.protocol}//${location.host}/apps/${this.data.project_path}/`
     }
   },
 
