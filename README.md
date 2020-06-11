@@ -8,11 +8,11 @@ npm start
 ```
 
 # Usages
-browser at: http://localhost:8060/adminn/  
-app download: http://localhost:8060/add/[project-path].dn
+browse at: http://localhost:8060/adminn/  
+app down: http://localhost:8060/adds/[project-path].dn
 
 # Install GraphicsMagick
-ftp://ftp.graphicsmagick.org/pub/GraphicsMagick/
+source: ftp://ftp.graphicsmagick.org/pub/GraphicsMagick/
 ```Shell
 yum install -y gcc libpng libjpeg giflib libpng-devel libjpeg-devel giflib-devel ghostscript libtiff libtiff-devel freetype freetype-devel
 
